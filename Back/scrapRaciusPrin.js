@@ -36,7 +36,7 @@ async function scrapeData(pageNumber) {
 // Função principal para iterar pelas páginas e coletar os links
 async function getAllCompanyLinks() {
     let allLinks = [];
-    let pageNumber = 75;
+    let pageNumber = 1;
     let hasMorePages = true;
 
     while (hasMorePages) {
