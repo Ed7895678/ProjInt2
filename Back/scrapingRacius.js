@@ -1,3 +1,5 @@
+//na consola "node scrapingRacius.js"
+
 const axios = require('axios');
 const cheerio = require('cheerio');
 
