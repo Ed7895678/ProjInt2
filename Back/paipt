@@ -1,21 +1,56 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs-extra');
 const path = require('path');
-
-// Lista de empresas a serem pesquisadas
-const empresas = [
-    'COMANOR IMOBILIÁRIA',
-    'Empresa B',
-    'Empresa C',
-    // Adicione mais nomes conforme necessário
-];
+const readline = require('readline');
 
 // Função para pausar a execução por um determinado tempo (ms)
 const delay = (time) => new Promise(resolve => setTimeout(resolve, time));
 
+// Função para ler empresas a partir do arquivo empresas.txt
+async function lerEmpresas(caminhoArquivo) {
+    const empresas = [];
+    const fileStream = fs.createReadStream(caminhoArquivo);
+
+    const rl = readline.createInterface({
+        input: fileStream,
+        crlfDelay: Infinity
+    });
+
+    for await (const line of rl) {
+        const empresa = line.trim();
+        if (empresa) { // Ignora linhas vazias
+            empresas.push(empresa);
+        }
+    }
+
+    return empresas;
+}
+
 async function buscarReviews() {
-    // Lançar o navegador
-    const browser = await puppeteer.launch({ headless: false });
+    // Caminho para o arquivo de empresas
+    // Use o caminho absoluto fornecido pelo usuário
+    const caminhoEmpresas = "C:\\Users\\pedro\\paipt\\empresas.txt";
+
+    // Verifica se o arquivo existe
+    if (!fs.existsSync(caminhoEmpresas)) {
+        console.error(`Arquivo "empresas.txt" não encontrado no diretório ${caminhoEmpresas}`);
+        process.exit(1);
+    }
+
+    // Lê a lista de empresas
+    const empresas = await lerEmpresas(caminhoEmpresas);
+    console.log(`Total de empresas a serem pesquisadas: ${empresas.length}`);
+
+    // Define o caminho para o arquivo de resultados no formato JSON Lines
+    const caminhoArquivoResultados = path.join(__dirname, 'resultados_reviews.jsonl');
+
+    // Se o arquivo não existir, cria um vazio
+    if (!fs.existsSync(caminhoArquivoResultados)) {
+        fs.writeFileSync(caminhoArquivoResultados, '');
+    }
+
+    // Lança o navegador
+    const browser = await puppeteer.launch({ headless: true });
     const page = await browser.newPage();
 
     // Opcional: Configurar User-Agent para imitar um navegador real
@@ -23,99 +58,225 @@ async function buscarReviews() {
                             'AppleWebKit/537.36 (KHTML, like Gecko) ' +
                             'Chrome/112.0.0.0 Safari/537.36');
 
-    const resultadosFinal = [];
-
     try {
-        for (const empresa of empresas) {
-            console.log(`\nPesquisando empresa: ${empresa}`);
+        for (const [index, empresa] of empresas.entries()) {
+            console.log(`\n[${index + 1}/${empresas.length}] Pesquisando empresa: ${empresa}`);
 
             // Navega para a página inicial do pai.pt
-            await page.goto('https://www.pai.pt/', { waitUntil: 'networkidle2' });
+            try {
+                await page.goto('https://www.pai.pt/', { waitUntil: 'networkidle2', timeout: 30000 });
+            } catch (e) {
+                console.error(`→ Erro ao navegar para a página inicial do pai.pt para a empresa: ${empresa}`);
+                const resultadoErro = {
+                    empresa,
+                    link: null,
+                    resumoAvaliacoes: null,
+                    avaliacoes: [],
+                    erro: 'Erro ao carregar a página inicial do pai.pt'
+                };
+                await fs.appendFile(caminhoArquivoResultados, JSON.stringify(resultadoErro) + '\n');
+                continue; // Pula para a próxima empresa
+            }
 
             // Aguarda o campo de pesquisa estar disponível
-            await page.waitForSelector('#search_query');
+            const campoPesquisaSelector = '#search_query';
+            try {
+                await page.waitForSelector(campoPesquisaSelector, { timeout: 10000 });
+            } catch (e) {
+                console.error(`→ Tempo de espera excedido para o campo de pesquisa: ${empresa}`);
+                const resultadoErro = {
+                    empresa,
+                    link: null,
+                    resumoAvaliacoes: null,
+                    avaliacoes: [],
+                    erro: 'Campo de pesquisa não encontrado'
+                };
+                await fs.appendFile(caminhoArquivoResultados, JSON.stringify(resultadoErro) + '\n');
+                continue; // Pula para a próxima empresa
+            }
 
             // Seleciona todo o texto existente no campo de pesquisa e insere o nome da empresa
-            await page.click('#search_query', { clickCount: 3 });
-            await page.type('#search_query', empresa);
+            try {
+                await page.click(campoPesquisaSelector, { clickCount: 3 });
+                await page.type(campoPesquisaSelector, empresa, { delay: 100 }); // Digitação mais humana
+            } catch (e) {
+                console.error(`→ Erro ao inserir o nome da empresa no campo de pesquisa: ${empresa}`);
+                const resultadoErro = {
+                    empresa,
+                    link: null,
+                    resumoAvaliacoes: null,
+                    avaliacoes: [],
+                    erro: 'Erro ao inserir nome no campo de pesquisa'
+                };
+                await fs.appendFile(caminhoArquivoResultados, JSON.stringify(resultadoErro) + '\n');
+                continue; // Pula para a próxima empresa
+            }
 
             // Clica no botão de pesquisa
-            await Promise.all([
-                page.click('input[type="submit"][name="commit"]'),
-                page.waitForNavigation({ waitUntil: 'networkidle2' })
-            ]);
+            const botaoPesquisaSelector = 'input[type="submit"][name="commit"]';
+            try {
+                await Promise.all([
+                    page.click(botaoPesquisaSelector),
+                    page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 })
+                ]);
+            } catch (e) {
+                console.error(`→ Erro ao realizar a pesquisa para a empresa: ${empresa}`);
+                const resultadoErro = {
+                    empresa,
+                    link: null,
+                    resumoAvaliacoes: null,
+                    avaliacoes: [],
+                    erro: 'Erro ao clicar no botão de pesquisa ou aguardar a navegação'
+                };
+                await fs.appendFile(caminhoArquivoResultados, JSON.stringify(resultadoErro) + '\n');
+                continue; // Pula para a próxima empresa
+            }
 
-            // Aguarda os resultados da pesquisa
+            // Verifica se a página exibe a mensagem de "nenhum resultado encontrado"
+            const notFoundSelector = 'h2.not-found-title';
+            let isNotFound = false;
+            try {
+                await page.waitForSelector(notFoundSelector, { timeout: 5000 });
+                isNotFound = true;
+            } catch (e) {
+                isNotFound = false;
+            }
+
+            if (isNotFound) {
+                console.log(`→ Nenhum resultado encontrado para a empresa: ${empresa}`);
+                const resultado = {
+                    empresa,
+                    link: null,
+                    resumoAvaliacoes: null,
+                    avaliacoes: []
+                };
+                await fs.appendFile(caminhoArquivoResultados, JSON.stringify(resultado) + '\n');
+                continue; // Pula para a próxima empresa
+            }
+
+            // Verifica se há resultados de pesquisa válidos
             const resultadoSelector = 'a.card-link';
-            const resultadosEncontrados = await page.$$(resultadoSelector);
+            let resultadosEncontrados = [];
+            try {
+                resultadosEncontrados = await page.$$(resultadoSelector);
+            } catch (e) {
+                resultadosEncontrados = [];
+            }
 
             if (resultadosEncontrados.length > 0) {
                 // Seleciona o primeiro resultado da pesquisa
-                const linkEmpresa = await page.$eval(resultadoSelector, el => el.href).catch(() => null);
+                let linkEmpresa = null;
+                try {
+                    linkEmpresa = await page.$eval(resultadoSelector, el => el.href);
+                } catch (e) {
+                    linkEmpresa = null;
+                }
 
                 if (linkEmpresa) {
-                    console.log(`Encontrada página da empresa: ${linkEmpresa}`);
+                    console.log(`→ Encontrada página da empresa: ${linkEmpresa}`);
 
                     // Navega para a página da empresa
-                    await page.goto(linkEmpresa, { waitUntil: 'networkidle2' });
+                    try {
+                        await page.goto(linkEmpresa, { waitUntil: 'networkidle2', timeout: 30000 });
+                    } catch (e) {
+                        console.error(`→ Erro ao navegar para a página da empresa: ${empresa}`);
+                        const resultadoErro = {
+                            empresa,
+                            link: linkEmpresa,
+                            resumoAvaliacoes: null,
+                            avaliacoes: [],
+                            erro: 'Erro ao carregar a página da empresa'
+                        };
+                        await fs.appendFile(caminhoArquivoResultados, JSON.stringify(resultadoErro) + '\n');
+                        continue; // Pula para a próxima empresa
+                    }
 
                     // Verifica se a seção de reviews existe
                     const reviewsContainerSelector = '.reviews-container';
-                    const existeReviews = await page.$(reviewsContainerSelector) !== null;
+                    let existeReviews = false;
+                    try {
+                        await page.waitForSelector(reviewsContainerSelector, { timeout: 5000 });
+                        existeReviews = true;
+                    } catch (e) {
+                        existeReviews = false;
+                    }
 
                     let resumoAvaliacoes = null;
                     let todasAvaliacoes = [];
 
                     if (existeReviews) {
-                        // Aguarda a seção de reviews estar disponível
-                        await page.waitForSelector(reviewsContainerSelector);
-
                         // Extrai a média de avaliações e o número total de avaliações
-                        resumoAvaliacoes = await page.evaluate(() => {
-                            const mediaElement = document.querySelector('.rating-review');
-                            const totalElement = document.querySelector('.reviews-container .rating-grid .cell.small-3 p');
-                            
-                            const mediaEstrelas = mediaElement ? Array.from(mediaElement.querySelectorAll('.star')).reduce((acc, star) => {
-                                if (star.classList.contains('filled')) acc += 1;
-                                else if (star.classList.contains('half-filled')) acc += 0.5;
-                                return acc;
-                            }, 0) : 'N/A';
+                        try {
+                            resumoAvaliacoes = await page.evaluate(() => {
+                                const mediaElement = document.querySelector('.rating-review');
+                                const totalElement = document.querySelector('.reviews-container .rating-grid .cell.small-3 p');
 
-                            const totalAvaliacoes = totalElement ? totalElement.innerText.trim().split(' ')[0] : 'N/A';
+                                let mediaEstrelas = 'N/A';
+                                let totalAvaliacoes = 'N/A';
 
-                            return { mediaEstrelas, totalAvaliacoes };
-                        });
+                                if (mediaElement) {
+                                    const estrelas = Array.from(mediaElement.querySelectorAll('.star'));
+                                    mediaEstrelas = estrelas.reduce((acc, star) => {
+                                        if (star.classList.contains('filled')) return acc + 1;
+                                        else if (star.classList.contains('half-filled')) return acc + 0.5;
+                                        return acc;
+                                    }, 0);
+                                }
+
+                                if (totalElement) {
+                                    const textoTotal = totalElement.innerText.trim();
+                                    const match = textoTotal.match(/\d+/);
+                                    totalAvaliacoes = match ? match[0] : 'N/A';
+                                }
+
+                                return { mediaEstrelas, totalAvaliacoes };
+                            });
+                        } catch (e) {
+                            resumoAvaliacoes = { mediaEstrelas: 'N/A', totalAvaliacoes: 'N/A' };
+                        }
+
+                        console.log(`→ Resumo das avaliações: Média de ${resumoAvaliacoes.mediaEstrelas} estrelas, Total de ${resumoAvaliacoes.totalAvaliacoes} avaliações`);
 
                         // Função para extrair as reviews de uma página
                         const extrairReviews = async () => {
-                            return await page.evaluate(() => {
-                                const reviews = [];
-                                const elementos = document.querySelectorAll('.review-container');
+                            try {
+                                return await page.evaluate(() => {
+                                    const reviews = [];
+                                    const elementos = document.querySelectorAll('.review-container');
 
-                                elementos.forEach(el => {
-                                    // Autor da avaliação
-                                    const autor = el.querySelector('.review-sub > strong')?.innerText.trim() || 'N/A';
+                                    elementos.forEach(el => {
+                                        // Autor da avaliação
+                                        const autor = el.querySelector('.review-sub > strong')?.innerText.trim() || 'N/A';
 
-                                    // Nota da avaliação (número de estrelas)
-                                    const estrelas = el.querySelectorAll('.rating-review-small .star.filled').length +
-                                                     (el.querySelectorAll('.rating-review-small .star.half-filled').length * 0.5);
+                                        // Nota da avaliação (número de estrelas)
+                                        const estrelasFilled = el.querySelectorAll('.rating-review-small .star.filled').length;
+                                        const estrelasHalfFilled = el.querySelectorAll('.rating-review-small .star.half-filled').length;
+                                        const estrelas = estrelasFilled + (estrelasHalfFilled * 0.5);
 
-                                    // Conteúdo da avaliação
-                                    const conteudo = el.querySelector('.review-content')?.innerText.trim() || 'N/A';
+                                        // Conteúdo da avaliação
+                                        const conteudo = el.querySelector('.review-content')?.innerText.trim() || 'N/A';
 
-                                    // Data da avaliação
-                                    const data = el.querySelector('.review-meta span.ml-5')?.innerText.trim() || 'N/A';
+                                        // Data da avaliação
+                                        const data = el.querySelector('.review-meta span.ml-5')?.innerText.trim() || 'N/A';
 
-                                    reviews.push({ autor, estrelas, conteudo, data });
+                                        reviews.push({ autor, estrelas, conteudo, data });
+                                    });
+
+                                    return reviews;
                                 });
-
-                                return reviews;
-                            });
+                            } catch (e) {
+                                return [];
+                            }
                         };
 
                         // Extrai as reviews da primeira página
-                        todasAvaliacoes = await extrairReviews();
-                        console.log(`Avaliações encontradas na primeira página: ${todasAvaliacoes.length}`);
+                        try {
+                            todasAvaliacoes = await extrairReviews();
+                            console.log(`→ Avaliações encontradas na primeira página: ${todasAvaliacoes.length}`);
+                        } catch (e) {
+                            todasAvaliacoes = [];
+                            console.error(`→ Erro ao extrair avaliações da empresa: ${empresa}`);
+                        }
 
                         // Verifica se há mais páginas de avaliações
                         let proximaPagina = true;
@@ -123,77 +284,87 @@ async function buscarReviews() {
 
                         while (proximaPagina) {
                             // Tenta encontrar o botão de "Seguinte ›"
-                            const botaoProxima = await page.$('a.next[rel="next"]');
+                            let botaoProxima = null;
+                            try {
+                                botaoProxima = await page.$('li.next a[rel="next"]');
+                            } catch (e) {
+                                botaoProxima = null;
+                            }
 
                             if (botaoProxima) {
                                 numeroPagina += 1;
-                                console.log(`Navegando para a página de avaliações: ${numeroPagina}`);
+                                console.log(`→ Navegando para a página de avaliações: ${numeroPagina}`);
 
                                 // Clica no botão de próxima página e aguarda a navegação
-                                await Promise.all([
-                                    botaoProxima.click(),
-                                    page.waitForNavigation({ waitUntil: 'networkidle2' })
-                                ]);
-
-                                // Aguarda as reviews estarem disponíveis na nova página
-                                await page.waitForSelector(reviewsContainerSelector);
+                                try {
+                                    await Promise.all([
+                                        botaoProxima.click(),
+                                        page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 })
+                                    ]);
+                                } catch (e) {
+                                    console.error(`→ Erro ao navegar para a página de avaliações ${numeroPagina} da empresa: ${empresa}`);
+                                    break; // Sai do loop de páginas
+                                }
 
                                 // Extrai as reviews da nova página
-                                const reviewsPagina = await extrairReviews();
-                                console.log(`Avaliações encontradas na página ${numeroPagina}: ${reviewsPagina.length}`);
+                                let reviewsPagina = [];
+                                try {
+                                    reviewsPagina = await extrairReviews();
+                                    console.log(`→ Avaliações encontradas na página ${numeroPagina}: ${reviewsPagina.length}`);
+                                } catch (e) {
+                                    reviewsPagina = [];
+                                    console.error(`→ Erro ao extrair avaliações da página ${numeroPagina} da empresa: ${empresa}`);
+                                }
 
                                 // Adiciona as novas avaliações ao array total
                                 todasAvaliacoes = todasAvaliacoes.concat(reviewsPagina);
 
-                                // Opcional: Pausa entre as requisições para evitar sobrecarga
-                                await delay(1000); // Pausa de 1 segundo
+                                // Pausa aleatória entre 1 a 3 segundos para evitar sobrecarga
+                                const pausa = Math.floor(Math.random() * 2000) + 1000;
+                                await delay(pausa);
                             } else {
                                 proximaPagina = false; // Não há mais páginas
                             }
                         }
 
                     } else {
-                        console.log(`Nenhuma avaliação encontrada para a empresa: ${empresa}`);
+                        console.log(`→ Nenhuma página encontrada para a empresa: ${empresa}`);
                     }
 
-                    // Adiciona os resultados para a empresa atual
-                    resultadosFinal.push({
+                    // Cria o objeto de resultado para a empresa atual
+                    const resultado = {
                         empresa,
                         link: linkEmpresa,
                         resumoAvaliacoes,
                         avaliacoes: todasAvaliacoes
-                    });
+                    };
 
-                    // Opcional: Pausa entre as pesquisas para evitar sobrecarga
-                    await delay(2000); // Pausa de 2 segundos
+                    // Salva o resultado no arquivo JSON Lines
+                    try {
+                        await fs.appendFile(caminhoArquivoResultados, JSON.stringify(resultado) + '\n');
+                        console.log(`→ Resultado salvo para a empresa: ${empresa}`);
+                    } catch (e) {
+                        console.error(`→ Erro ao salvar o resultado para a empresa: ${empresa}`);
+                    }
+
+                    // Pausa aleatória entre 2 a 5 segundos entre pesquisas para evitar sobrecarga
+                    const pausaPesquisa = Math.floor(Math.random() * 3000) + 2000;
+                    await delay(pausaPesquisa);
                 } else {
-                    console.log(`Nenhuma página encontrada para a empresa: ${empresa}`);
-                    resultadosFinal.push({
+                    console.log(`→ Nenhuma página encontrada para a empresa: ${empresa}`);
+                    const resultado = {
                         empresa,
                         link: null,
                         resumoAvaliacoes: null,
                         avaliacoes: []
-                    });
+                    };
+                    await fs.appendFile(caminhoArquivoResultados, JSON.stringify(resultado) + '\n');
                 }
-            } else {
-                console.log(`Nenhum resultado encontrado para a empresa: ${empresa}`);
-                resultadosFinal.push({
-                    empresa,
-                    link: null,
-                    resumoAvaliacoes: null,
-                    avaliacoes: []
-                });
             }
         }
-
-        // Define o caminho completo para salvar o arquivo JSON
-        const caminhoArquivo = path.join(__dirname, 'resultados_reviews.json');
-
-        // Salva os resultados em um arquivo JSON
-        await fs.writeJson(caminhoArquivo, resultadosFinal, { spaces: 2 });
-        console.log(`\nDados salvos em "${caminhoArquivo}"`);
+        console.log(`\n🔍 Todas as pesquisas concluídas. Resultados salvos em "${caminhoArquivoResultados}"`);
     } catch (error) {
-        console.error('Erro durante a execução:', error);
+        console.error('⚠️ Erro durante a execução:', error);
     } finally {
         await browser.close();
     }
@@ -201,3 +372,4 @@ async function buscarReviews() {
 
 // Executa a função principal
 buscarReviews();
+
