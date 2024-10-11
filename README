@@ -4,3 +4,5 @@ Requerimentos:
 
 ScrapCaes.js: insere na tabela Caes os valores de CAEs do ficheiro listaCae.json
 ScrapEinforma: recolhe dados de todos os NIFs validos do site Einforma
+
+Ficheiros JS são executados com o comando: node nome_do_ficheiro (ex. node ScrapCaes.js)
