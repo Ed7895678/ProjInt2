@@ -2,7 +2,8 @@ Requerimentos:
     Node
     Base de dados MYSQL
 
-ScrapCaes.js: insere na tabela Caes os valores de CAEs do ficheiro listaCae.json
+GetCaes.js: insere na tabela Caes os valores de CAEs armazenados no ficheiro listaCae.json
 ScrapEinforma: recolhe dados de todos os NIFs validos do site Einforma
+UpdateDatabase.js: recebe os dados de outras funções e insere ou atualiza a Base de Dados
 
 Ficheiros JS são executados com o comando: node nome_do_ficheiro (ex. node ScrapCaes.js)
