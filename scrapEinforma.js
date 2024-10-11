@@ -249,15 +249,3 @@ function validaContribuinte(nif) {
 function salvarUltimoNif(nif) {
     fs.writeFileSync('LastNIF', nif.toString(), 'utf-8');
 }
-
-
-
-
-
-
-
-
-
-
-
-

@@ -1,0 +1,6 @@
+Requerimentos: 
+    Node
+    Base de dados MYSQL
+
+ScrapCaes.js: insere na tabela Caes os valores de CAEs do ficheiro listaCae.json
+ScrapEinforma: recolhe dados de todos os NIFs validos do site Einforma
