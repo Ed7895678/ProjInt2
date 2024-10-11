@@ -4,80 +4,7 @@ const cheerio = require('cheerio');
 const fs = require('fs');
 const mysql = require('mysql2/promise');
 
-// Conexão com a Base de Dados
-const pool = mysql.createPool({
-    host: 'localhost',
-    user: 'root', 
-    password: '', 
-    database: 'projint2',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
-});
-
-// Ler o último NIF guardado no arquivo
-function lerUltimoNif() {
-    const arquivo = 'LastNIF';
-    const NIF_MIN = 500000000;
-    const NIF_MAX = 599999999;
-
-    if (!fs.existsSync(arquivo)) {
-        // Se o arquivo não existir, cria-o com um valor inicial
-        fs.writeFileSync(arquivo, NIF_MIN.toString(), 'utf-8');
-        console.log(`Arquivo ${arquivo} criado com valor inicial: ${NIF_MIN}`);
-        return NIF_MIN;
-    }
-    
-    try {
-        let nifSalvo = parseInt(fs.readFileSync(arquivo, 'utf-8'), 10);
-        console.log(`-------------------------------`);
-
-        // Verifica se o NIF está fora dos limites permitidos
-        if (nifSalvo < NIF_MIN || nifSalvo > NIF_MAX) {
-            console.log(`NIF lido (${nifSalvo}) está fora do intervalo permitido. Definindo para ${NIF_MIN}.`);
-            nifSalvo = NIF_MIN;
-        }
-
-        console.log(`Lendo o limite inferior do arquivo: ${nifSalvo}`);
-        console.log(`-------------------------------`);
-        return nifSalvo;
-
-    } catch (error) {
-        console.error(`Erro ao ler o arquivo ${arquivo}: ${error.message}`);
-        console.log(`-------------------------------`);
-        return NIF_MIN; // Valor padrão caso não consiga ler
-    }
-}
-
-// Gerir NIF dentro dos intervalos Definidos
-function generatePossibleNIFs(start, end) {
-    let nifs = [];
-    for (let i = start; i <= end; i++) {
-        let nif = i.toString();
-        if (nif.startsWith('5') && validaContribuinte(nif)) {
-            nifs.push(nif);
-        }
-    }
-    return nifs;
-}
-
-// Validação de NIF
-function validaContribuinte(nif) {
-    const checkArr = [9, 8, 7, 6, 5, 4, 3, 2];
-    let total = 0;
-    for (let i = 0; i < 8; i++) {
-        total += nif[i] * checkArr[i];
-    }
-    const modulo11 = total % 11;
-    const comparador = modulo11 < 2 ? 0 : 11 - modulo11;
-    return nif[8] == comparador;
-}
-
-
-
-
-
-
+// Scrapping
 async function getCompanyInfo(nif) {
     const url = `https://www.einforma.pt/servlet/app/portal/ENTP/prod/ETIQUETA_EMPRESA_CONTRIBUINTE/nif/${nif}`;
     
@@ -236,19 +163,6 @@ async function getCompanyInfo(nif) {
 
 
 
-
-
-
-
-
-
-
-
-// Guardar o último NIF processado
-function salvarUltimoNif(nif) {
-    fs.writeFileSync('LastNIF', nif.toString(), 'utf-8');
-}
-
 // Executa a Função
 (async () => {
     const limiteInferior = lerUltimoNif();
@@ -258,5 +172,92 @@ function salvarUltimoNif(nif) {
         await getCompanyInfo(nif);
     }
 
+    // Processo Completo
     console.log("\nProcesso de busca de empresas concluído.\n");
 })();
+
+// Conexão com a Base de Dados
+const pool = mysql.createPool({
+    host: 'localhost',
+    user: 'root', 
+    password: '', 
+    database: 'projint2',
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
+});
+
+// Ler o último NIF guardado no arquivo
+function lerUltimoNif() {
+    const arquivo = 'LastNIF';
+    const NIF_MIN = 500000000;
+    const NIF_MAX = 599999999;
+
+    if (!fs.existsSync(arquivo)) {
+        // Se o arquivo não existir, cria-o com um valor inicial
+        fs.writeFileSync(arquivo, NIF_MIN.toString(), 'utf-8');
+        console.log(`Arquivo ${arquivo} criado com valor inicial: ${NIF_MIN}`);
+        return NIF_MIN;
+    }
+    
+    try {
+        let nifSalvo = parseInt(fs.readFileSync(arquivo, 'utf-8'), 10);
+        console.log(`-------------------------------`);
+
+        // Verifica se o NIF está fora dos limites permitidos
+        if (nifSalvo < NIF_MIN || nifSalvo > NIF_MAX) {
+            console.log(`NIF lido (${nifSalvo}) está fora do intervalo permitido. Definindo para ${NIF_MIN}.`);
+            nifSalvo = NIF_MIN;
+        }
+
+        console.log(`Lendo o limite inferior do arquivo: ${nifSalvo}`);
+        console.log(`-------------------------------`);
+        return nifSalvo;
+
+    } catch (error) {
+        console.error(`Erro ao ler o arquivo ${arquivo}: ${error.message}`);
+        console.log(`-------------------------------`);
+        return NIF_MIN; // Valor padrão caso não consiga ler
+    }
+}
+
+// Gerir NIF dentro dos intervalos Definidos
+function generatePossibleNIFs(start, end) {
+    let nifs = [];
+    for (let i = start; i <= end; i++) {
+        let nif = i.toString();
+        if (nif.startsWith('5') && validaContribuinte(nif)) {
+            nifs.push(nif);
+        }
+    }
+    return nifs;
+}
+
+// Validação de NIF
+function validaContribuinte(nif) {
+    const checkArr = [9, 8, 7, 6, 5, 4, 3, 2];
+    let total = 0;
+    for (let i = 0; i < 8; i++) {
+        total += nif[i] * checkArr[i];
+    }
+    const modulo11 = total % 11;
+    const comparador = modulo11 < 2 ? 0 : 11 - modulo11;
+    return nif[8] == comparador;
+}
+
+// Guardar o último NIF processado
+function salvarUltimoNif(nif) {
+    fs.writeFileSync('LastNIF', nif.toString(), 'utf-8');
+}
+
+
+
+
+
+
+
+
+
+
+
+
