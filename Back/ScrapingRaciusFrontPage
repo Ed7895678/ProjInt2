@@ -1,0 +1,54 @@
+const puppeteer = require('puppeteer');
+
+async function getCompanyLinks(pageNumber) {
+    const url = `https://www.racius.com/empresas-em-portugal/${pageNumber}/`;
+
+    try {
+        // Inicializar o Puppeteer e abrir um navegador (não headless para facilitar a depuração)
+        const browser = await puppeteer.launch({ headless: false });
+        const page = await browser.newPage();
+
+        // Navegar até a página
+        await page.goto(url, { waitUntil: 'networkidle2' });
+
+        // Esperar que o seletor específico esteja presente na página
+        await page.waitForSelector('.results__col-link', { timeout: 30000 });
+
+        // Extrair os links das empresas
+        const companyLinks = await page.evaluate(() => {
+            const links = [];
+            // Selecionar todos os elementos <a> que têm a classe .results__col-link
+            document.querySelectorAll('.results__col-link').forEach((el) => {
+                // Adicionando a URL base porque o link é relativo
+                links.push(`https://www.racius.com${el.getAttribute('href')}`);
+            });
+            return links;
+        });
+
+        // Fechar o navegador
+        await browser.close();
+
+        return companyLinks;
+
+    } catch (error) {
+        console.error("Erro ao obter dados da página:", error);
+        return [];
+    }
+}
+
+// Função principal para iterar pelas páginas e coletar os links
+async function getAllCompanyLinks(totalPages) {
+    let allLinks = [];
+
+    for (let i = 1; i <= totalPages; i++) {
+        console.log(`Processando página ${i}...`);
+        const linksFromPage = await getCompanyLinks(i);
+        allLinks = allLinks.concat(linksFromPage);
+        console.log(`Página ${i} processada, links encontrados:`, linksFromPage);
+    }
+
+    console.log("Todos os links de empresas:", allLinks);
+}
+
+// Exemplo de uso: Coletar links de 5 páginas
+getAllCompanyLinks(5);
