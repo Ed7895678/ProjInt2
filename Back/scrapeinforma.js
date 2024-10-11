@@ -1,5 +1,3 @@
-// Amostra de codigo
-
 // Imports
 const axios = require('axios');
 const cheerio = require('cheerio');
@@ -75,24 +73,30 @@ function validaContribuinte(nif) {
     return nif[8] == comparador;
 }
 
-// Pesquisa do NIF
+
+
+
+
+
 async function getCompanyInfo(nif) {
     const url = `https://www.einforma.pt/servlet/app/portal/ENTP/prod/ETIQUETA_EMPRESA_CONTRIBUINTE/nif/${nif}`;
     
     try {
+        // Pesquisa com o NIF aprovado
         const { data } = await axios.get(url);
         console.log(`Buscando informações da empresa com NIF: ${nif}`);
 
         const $ = cheerio.load(data);
         const nomeEmpresa = $('span[itemprop="name"]').text().trim() || "N/A";
 
+        // Se não existir nome, Empresa não existe
         if (nomeEmpresa === "N/A") {
             console.log(`Nenhum resultado para NIF: ${nif}`);
             console.log(`\n-------------------------------\n`);
             return;
         }
 
-        // Verificar se a empresa está extinta, sem atividade, fusionada, em liquidação ou insolvente
+        // Retira empresas que não estejam em atividade
         const estadosInativos = ['(EXTINTA)', '(SEM ATIVIDADE)', '(FUSIONADA)', '(EM LIQUIDAÇÃO)', '(INSOLVENTE)'];
         if (estadosInativos.some(estado => nomeEmpresa.includes(estado))) {
             console.log(`Empresa ${nomeEmpresa} está inativa.`);
@@ -100,35 +104,150 @@ async function getCompanyInfo(nif) {
             return;
         }
 
+        // Obtém NIF
         const nifValue = $('td:contains("NIF:") + td a').text().trim() || "N/A";
-        const legal = $('td:contains("Forma Jurídica:") + td').text().trim() || "N/A";
-        const description = $('td:contains("Descrição da Atividade:") + td').text().trim() || "N/A";
 
-        // Inserindo os dados no MySQL
-        try {
-            const query = `INSERT INTO Companies (Name, Description, Legal, VAT, Created_at) VALUES (?, ?, ?, ?, NOW())`;
-            await pool.execute(query, [nomeEmpresa, description, legal, nifValue]);
-            console.log(`Empresa ${nomeEmpresa} inserida na Base de Dados.`);
-        } catch (err) {
-            console.error(`Erro ao inserir no MySQL para NIF ${nif}: ${err.message}`);
+        // Obtém DUNS
+        const dunsValue = $('td:contains("DUNS:") + td').text().trim() || "N/A";
+
+        // Obtém Morada
+        const moradaEmpresa = $('td:contains("Morada:") + td').text().trim() || "N/A";
+
+        // Obtém "Codigo Postal" em inteiro
+        const codigoPostalFull = $('td:contains("Código Postal:") + td').text().trim() || "N/A";
+
+        // Declaração de partes separados do Codigo Postal
+        let codigoPostalNumerico = "N/A";
+        let localizacaoCodigoPostal = "N/A";
+
+        // Divide o Valor inteiro de "Codigo Postal" em duas partes: Zipcode e Location
+        if (codigoPostalFull !== "N/A" && codigoPostalFull.includes('-')) {
+
+            // Divide o Valor Inteiro
+            const partesCodigoPostal = codigoPostalFull.split(' ');
+            // Obtém Codigo Postal
+            codigoPostalNumerico = partesCodigoPostal[0].trim();
+            // Obtém Localização
+            localizacaoCodigoPostal = partesCodigoPostal.slice(1).join(' ').trim();
         }
 
-        // Salvando o último NIF encontrado em um ficheiro
+        // Inserção de dados na tabela Companies
+        let idCompany;
+        try {
+            // Query de criação para tabelas
+            const query = `INSERT INTO Companies (Name, DUNS, VAT, Created_at, Updated_at) VALUES (?, ?, ?, NOW(), NOW())`;
+            const [result] = await pool.execute(query, [nomeEmpresa, dunsValue, nifValue]); 
+
+            // Procura id da empresa na base de dados recém criada para usar de seguida
+            idCompany = result.insertId;
+
+            // Consola
+            console.log(`Companies: Dados inseridos com sucesso.`);
+        } catch (err) {
+            console.error(`Erro ao inserir na tabela Companies: ${err.message}`);
+            return; 
+        }
+
+        // Inserção de dados na tabela Brands
+        let idBrand;
+        try {
+            // Query de criação para tabelas
+            const query = `INSERT INTO Brands (Name, VAT, Created_at, Updated_at, IDCompany) VALUES (?, ?, NOW(), NOW(), ?)`;
+            const [result] = await pool.execute(query, [nomeEmpresa, nifValue, idCompany]);
+
+            // Procura id da marca na base de dados recém criada para usar de seguida
+            idBrand = result.insertId;
+
+            console.log(`Brands: Dados inseridos com sucesso.`);
+        } catch (err) {
+            console.error(`Erro ao inserir na tabela Brands: ${err.message}`);
+            return;
+        }
+
+        // Verificar se IDBrand foi inserido corretamente
+        if (!idBrand) {
+            console.error('Erro ao buscar o IDBrand.');
+            return;
+        }
+
+        // Inserção de dados na tabela Addresses 
+        try {
+            // Query de criação para tabelas
+            const addressQuery = `INSERT INTO addresses 
+            (Address, Zipcode, Location, Country, Status, Created_at, Updated_at, IDBrand) 
+            VALUES (?, ?, ?, 'Portugal', 1, NOW(), NOW(), ?)`;
+            await pool.execute(addressQuery, [moradaEmpresa, codigoPostalNumerico, localizacaoCodigoPostal, idBrand]);
+
+            // Consola
+            console.log(`Addresses: Dados inseridos com sucesso.`);
+        } catch (err) {
+            console.error(`Erro ao inserir na tabela Addresses: ${err.message}`);
+        }
+
+        // CAE //
+
+        // Obter CAE 
+        const atividades = [];
+        $('td:contains("Atividade (CAE):") + td').each((i, element) => {
+
+            // Captura o código do CAE sem designação
+            const CaeCode = $(element).text().split(' - ')[0].trim();
+            atividades.push(CaeCode);
+        });
+
+        // Para cada código CAE, obtém-se o ID correspondente na tabela Caes para inserir na tabela caes_companies em conjunto com o ID de empresa
+        for (const CaeCode of atividades) {
+            try {
+                // Query de busca
+                const query = `SELECT id FROM Caes WHERE code = ?`;
+                const [rows] = await pool.execute(query, [CaeCode]);
+
+                if (rows.length > 0) {
+                    const caeId = rows[0].id;
+
+                    // Inserir na tabela caes_companies
+                    try {
+                        // Query de criação para tabelas
+                        const insertQuery = `INSERT INTO caes_companies (IDCompany, IDCae) VALUES (?, ?)`;
+                        await pool.execute(insertQuery, [idCompany, caeId]);
+
+                        console.log(`Caes_Companies: Coneção da empresa ${idCompany} e CAE ${caeId} completa.`);
+                    } catch (err) {
+                        console.error(`Erro ao inserir na tabela caes_companies: ${err.message}`);
+                    }
+                } else {
+                    // CAE não existe na base de Dados
+                    console.log(`Código CAE: ${CaeCode} não existe na tabela Caes.`);
+                }
+            } catch (err) {
+                console.error(`Erro ao buscar o ID do CAE da Base de Dados ${CaeCode}: ${err.message}`);
+            }
+        }
+
+        // Guardar ultimo NIF para continuar depois
         salvarUltimoNif(nifValue);
         console.log(`\n-------------------------------\n`);
 
     } catch (error) {
+        // Erro na pesquisa do NIF
         console.error(`Erro ao buscar informações da empresa com NIF ${nif}: ${error.message}`);
     }
 }
 
+
+
+
+
+
+
+
+
+
+
 // Guardar o último NIF processado
 function salvarUltimoNif(nif) {
     fs.writeFileSync('LastNIF', nif.toString(), 'utf-8');
-    console.log(`NIF ${nif} salvo no ficheiro LastNIF`);
 }
-
-
 
 // Executa a Função
 (async () => {
