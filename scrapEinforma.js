@@ -1,251 +1,117 @@
-// Imports
 const axios = require('axios');
 const cheerio = require('cheerio');
-const fs = require('fs');
 const mysql = require('mysql2/promise');
+const UpdateDatabase = require('./UpdateDatabase');
 
-// Scrapping
-async function getCompanyInfo(nif) {
-    const url = `https://www.einforma.pt/servlet/app/portal/ENTP/prod/ETIQUETA_EMPRESA_CONTRIBUINTE/nif/${nif}`;
-    
+processarEmpresas();
+
+async function processarEmpresas() {
     try {
-        // Pesquisa com o NIF aprovado
-        const { data } = await axios.get(url);
-        console.log(`Buscando informações da empresa com NIF: ${nif}`);
-
-        const $ = cheerio.load(data);
-        const nomeEmpresa = $('span[itemprop="name"]').text().trim() || "N/A";
-
-        // Se não existir nome, Empresa não existe
-        if (nomeEmpresa === "N/A") {
-            console.log(`Nenhum resultado para NIF: ${nif}`);
-            console.log(`\n-------------------------------\n`);
-            return;
-        }
-
-        // Retira empresas que não estejam em atividade
-        const estadosInativos = ['(EXTINTA)', '(SEM ATIVIDADE)', '(FUSIONADA)', '(EM LIQUIDAÇÃO)', '(INSOLVENTE)'];
-        if (estadosInativos.some(estado => nomeEmpresa.includes(estado))) {
-            console.log(`Empresa ${nomeEmpresa} está inativa.`);
-            console.log(`\n-------------------------------\n`);
-            return;
-        }
-
-        // Obtém NIF
-        const nifValue = $('td:contains("NIF:") + td a').text().trim() || "N/A";
-
-        // Obtém DUNS
-        const dunsValue = $('td:contains("DUNS:") + td').text().trim() || "N/A";
-
-        // Obtém Morada
-        const moradaEmpresa = $('td:contains("Morada:") + td').text().trim() || "N/A";
-
-        // Obtém "Codigo Postal" em inteiro
-        const codigoPostalFull = $('td:contains("Código Postal:") + td').text().trim() || "N/A";
-
-        // Declaração de partes separados do Codigo Postal
-        let codigoPostalNumerico = "N/A";
-        let localizacaoCodigoPostal = "N/A";
-
-        // Divide o Valor inteiro de "Codigo Postal" em duas partes: Zipcode e Location
-        if (codigoPostalFull !== "N/A" && codigoPostalFull.includes('-')) {
-
-            // Divide o Valor Inteiro
-            const partesCodigoPostal = codigoPostalFull.split(' ');
-            // Obtém Codigo Postal
-            codigoPostalNumerico = partesCodigoPostal[0].trim();
-            // Obtém Localização
-            localizacaoCodigoPostal = partesCodigoPostal.slice(1).join(' ').trim();
-        }
-
-        // Inserção de dados na tabela Companies
-        let idCompany;
-        try {
-            // Query de criação para tabelas
-            const query = `INSERT INTO Companies (Name, DUNS, VAT, Created_at, Updated_at) VALUES (?, ?, ?, NOW(), NOW())`;
-            const [result] = await pool.execute(query, [nomeEmpresa, dunsValue, nifValue]); 
-
-            // Procura id da empresa na base de dados recém criada para usar de seguida
-            idCompany = result.insertId;
-
-            // Consola
-            console.log(`Companies: Dados inseridos com sucesso.`);
-        } catch (err) {
-            console.error(`Erro ao inserir na tabela Companies: ${err.message}`);
-            return; 
-        }
-
-        // Inserção de dados na tabela Brands
-        let idBrand;
-        try {
-            // Query de criação para tabelas
-            const query = `INSERT INTO Brands (Name, VAT, Created_at, Updated_at, IDCompany) VALUES (?, ?, NOW(), NOW(), ?)`;
-            const [result] = await pool.execute(query, [nomeEmpresa, nifValue, idCompany]);
-
-            // Procura id da marca na base de dados recém criada para usar de seguida
-            idBrand = result.insertId;
-
-            console.log(`Brands: Dados inseridos com sucesso.`);
-        } catch (err) {
-            console.error(`Erro ao inserir na tabela Brands: ${err.message}`);
-            return;
-        }
-
-        // Verificar se IDBrand foi inserido corretamente
-        if (!idBrand) {
-            console.error('Erro ao buscar o IDBrand.');
-            return;
-        }
-
-        // Inserção de dados na tabela Addresses 
-        try {
-            // Query de criação para tabelas
-            const addressQuery = `INSERT INTO addresses 
-            (Address, Zipcode, Location, Country, Status, Created_at, Updated_at, IDBrand) 
-            VALUES (?, ?, ?, 'Portugal', 1, NOW(), NOW(), ?)`;
-            await pool.execute(addressQuery, [moradaEmpresa, codigoPostalNumerico, localizacaoCodigoPostal, idBrand]);
-
-            // Consola
-            console.log(`Addresses: Dados inseridos com sucesso.`);
-        } catch (err) {
-            console.error(`Erro ao inserir na tabela Addresses: ${err.message}`);
-        }
-
-        // CAE //
-
-        // Obter CAE 
-        const atividades = [];
-        $('td:contains("Atividade (CAE):") + td').each((i, element) => {
-
-            // Captura o código do CAE sem designação
-            const CaeCode = $(element).text().split(' - ')[0].trim();
-            atividades.push(CaeCode);
+        // Conectar à base de dados e buscar todos os NIFs ordenados por ordem crescente
+        const connection = await mysql.createConnection({
+            host: 'localhost',
+            user: 'root',
+            password: 'password', 
+            database: 'projint2'
         });
 
-        // Para cada código CAE, obtém-se o ID correspondente na tabela Caes para inserir na tabela caes_companies em conjunto com o ID de empresa
-        for (const CaeCode of atividades) {
+        // Query para buscar todos os NIFs
+        const query = 'SELECT nif FROM raciuslinks ORDER BY nif ASC';
+        const [nifRows] = await connection.execute(query);
+        await connection.end();
+
+        // Extrair os NIFs da consulta
+        const nifs = nifRows.map(row => row.nif);
+
+        // Scraping e obtenção de informações da empresa
+        for (const nif of nifs) {
+            const url = `https://www.einforma.pt/servlet/app/portal/ENTP/prod/ETIQUETA_EMPRESA_CONTRIBUINTE/nif/${nif}`;
+
             try {
-                // Query de busca
-                const query = `SELECT id FROM Caes WHERE code = ?`;
-                const [rows] = await pool.execute(query, [CaeCode]);
+                const { data } = await axios.get(url);
+                const $ = cheerio.load(data);
+                const nome = $('span[itemprop="name"]').text().trim() || "N/A";
 
-                if (rows.length > 0) {
-                    const caeId = rows[0].id;
-
-                    // Inserir na tabela caes_companies
-                    try {
-                        // Query de criação para tabelas
-                        const insertQuery = `INSERT INTO caes_companies (IDCompany, IDCae) VALUES (?, ?)`;
-                        await pool.execute(insertQuery, [idCompany, caeId]);
-
-                        console.log(`Caes_Companies: Coneção da empresa ${idCompany} e CAE ${caeId} completa.`);
-                    } catch (err) {
-                        console.error(`Erro ao inserir na tabela caes_companies: ${err.message}`);
-                    }
-                } else {
-                    // CAE não existe na base de Dados
-                    console.log(`Código CAE: ${CaeCode} não existe na tabela Caes.`);
+                // Verificar se empresas existem
+                if (nome === "N/A") {
+                    continue;
                 }
-            } catch (err) {
-                console.error(`Erro ao buscar o ID do CAE da Base de Dados ${CaeCode}: ${err.message}`);
+
+                // Retirar empresas inativas
+                const estadosInativos = ['(EXTINTA)', '(SEM ATIVIDADE)', '(FUSIONADA)', '(EM LIQUIDAÇÃO)', '(INSOLVENTE)'];
+                if (estadosInativos.some(estado => nome.includes(estado))) {
+                    continue;
+                }
+
+                // Scraping de informações
+                const nifRecolhido = $('td:contains("NIF:") + td a').text().trim() || "N/A";
+                const duns = $('td:contains("DUNS:") + td').text().trim() || "N/A";
+                const morada = $('td:contains("Morada:") + td').text().trim() || "N/A";
+                const codigoPostalFull = $('td:contains("Código Postal:") + td').text().trim() || "N/A";
+
+                let codigoPostal = "N/A";
+                let localizacao = "N/A";
+
+                // Divisão do Código Postal (1234-567 - Lisboa)
+                if (codigoPostalFull !== "N/A" && codigoPostalFull.includes('-')) {
+                    const partesCodigoPostal = codigoPostalFull.split(' ');
+                    codigoPostal = partesCodigoPostal[0].trim();
+                    localizacao = partesCodigoPostal.slice(1).join(' ').trim();
+                }
+
+                // Array de CAE's
+                const atividades = [];
+                $('td:contains("Atividade (CAE):") + td').each((i, element) => {
+                    const caeCode = $(element).text().split(' - ')[0].trim();
+                    atividades.push(caeCode);
+                });
+
+                // Capturar email e website
+                const email = $('td:contains("Email:") + td a').text().trim();
+                const website = $('td:contains("Website:") + td a').attr('href');
+
+                // Dados coletados
+                const Data = {
+                    // Fonte de Dados
+                    Source: "EInforma",
+                    VAT: nifRecolhido,
+                    // Dados da Empresa (Companies)
+                    NameCompany: nome,
+                    DUNS: duns,
+                    // Dados de CAEs (Caes)
+                    Caes: atividades,
+                    // Dados da Marca (Brands)
+                    NameBrand: nome,
+                    // Endereço (Addresses)
+                    Address: morada,
+                    Location: localizacao,
+                    Zipcode: codigoPostal,
+                    Country: 'Portugal',
+                };
+
+                // Adicionar dados de contato e link apenas se eles existirem e não forem 'N/A'
+                if (email && email !== "N/A") {
+                    Data.Contact = email;
+                    Data.TypeContact = "E-mail";
+                }
+                if (website && website !== "N/A") {
+                    Data.Url = website;
+                    Data.TypeLink = "Website";
+                }
+
+                // Mostrar os dados coletados na consola
+                console.log("Dados coletados para o NIF:", nif);
+
+                // Enviar os dados para a função UpdateDatabase
+                const response = await UpdateDatabase(Data);
+
+            } catch (error) {
+                console.error(`Erro ao processar o NIF ${nif}:`, error.message);
             }
         }
-
-        // Guardar ultimo NIF para continuar depois
-        salvarUltimoNif(nifValue);
-        console.log(`\n-------------------------------\n`);
+        console.log("Processamento das empresas concluído.");
 
     } catch (error) {
-        // Erro na pesquisa do NIF
-        console.error(`Erro ao buscar informações da empresa com NIF ${nif}: ${error.message}`);
+        console.error("Erro ao buscar NIFs da tabela RaciusLinks:", error.message);
     }
-}
-
-
-
-// Executa a Função
-(async () => {
-    const limiteInferior = lerUltimoNif();
-    const possibleNIFs = generatePossibleNIFs(limiteInferior, 599999999);
-
-    for (const nif of possibleNIFs) {
-        await getCompanyInfo(nif);
-    }
-
-    // Processo Completo
-    console.log("\nProcesso de busca de empresas concluído.\n");
-})();
-
-// Conexão com a Base de Dados
-const pool = mysql.createPool({
-    host: 'localhost',
-    user: 'root', 
-    password: '', 
-    database: 'projint2',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
-});
-
-// Ler o último NIF guardado no arquivo
-function lerUltimoNif() {
-    const arquivo = 'LastNIF';
-    const NIF_MIN = 500000000;
-    const NIF_MAX = 599999999;
-
-    if (!fs.existsSync(arquivo)) {
-        // Se o arquivo não existir, cria-o com um valor inicial
-        fs.writeFileSync(arquivo, NIF_MIN.toString(), 'utf-8');
-        console.log(`Arquivo ${arquivo} criado com valor inicial: ${NIF_MIN}`);
-        return NIF_MIN;
-    }
-    
-    try {
-        let nifSalvo = parseInt(fs.readFileSync(arquivo, 'utf-8'), 10);
-        console.log(`-------------------------------`);
-
-        // Verifica se o NIF está fora dos limites permitidos
-        if (nifSalvo < NIF_MIN || nifSalvo > NIF_MAX) {
-            console.log(`NIF lido (${nifSalvo}) está fora do intervalo permitido. Definindo para ${NIF_MIN}.`);
-            nifSalvo = NIF_MIN;
-        }
-
-        console.log(`Lendo o limite inferior do arquivo: ${nifSalvo}`);
-        console.log(`-------------------------------`);
-        return nifSalvo;
-
-    } catch (error) {
-        console.error(`Erro ao ler o arquivo ${arquivo}: ${error.message}`);
-        console.log(`-------------------------------`);
-        return NIF_MIN; // Valor padrão caso não consiga ler
-    }
-}
-
-// Gerir NIF dentro dos intervalos Definidos
-function generatePossibleNIFs(start, end) {
-    let nifs = [];
-    for (let i = start; i <= end; i++) {
-        let nif = i.toString();
-        if (nif.startsWith('5') && validaContribuinte(nif)) {
-            nifs.push(nif);
-        }
-    }
-    return nifs;
-}
-
-// Validação de NIF
-function validaContribuinte(nif) {
-    const checkArr = [9, 8, 7, 6, 5, 4, 3, 2];
-    let total = 0;
-    for (let i = 0; i < 8; i++) {
-        total += nif[i] * checkArr[i];
-    }
-    const modulo11 = total % 11;
-    const comparador = modulo11 < 2 ? 0 : 11 - modulo11;
-    return nif[8] == comparador;
-}
-
-// Guardar o último NIF processado
-function salvarUltimoNif(nif) {
-    fs.writeFileSync('LastNIF', nif.toString(), 'utf-8');
 }
