@@ -7,9 +7,6 @@ const pool = mysql.createPool({
     user: 'root',
     password: 'password',
     database: 'projint2',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
 });
 
 // Lê o ficheiro JSON
