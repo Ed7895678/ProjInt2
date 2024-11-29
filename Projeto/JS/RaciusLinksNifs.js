@@ -48,5 +48,5 @@ async function processFile(inputFile) {
 }
 
 // Chama a função principal
-const inputFilePath = path.join(__dirname, 'Data/raciusLinks.json'); // Caminho para o ficheiro json
+const inputFilePath = path.join(__dirname, 'raciusLinks.json'); // Caminho para o ficheiro json
 processFile(inputFilePath);

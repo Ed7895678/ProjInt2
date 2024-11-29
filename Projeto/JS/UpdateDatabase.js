@@ -186,7 +186,7 @@ async function updateLinks(data, idBrand) {
 
 
 
-// Função para inserir Reviews
+// Função para inserir em Reviews
 async function updateReviews(data, idBrand) {
     const insertReview = `INSERT INTO reviews (IDBrand, Description, Author, Date, Score, Status, Source) 
                           VALUES (?, ?, ?, ?, ?, 1, ?)`;
@@ -204,6 +204,90 @@ async function updateReviews(data, idBrand) {
 
 
 
+// Função para atualizar/inserir em Categories
+async function updateCategories(data) {
+    // Update
+    const updateCategory = `UPDATE categories SET Description = ?, Status = 1, Source = ? WHERE Code = ?`;
+    const [result] = await pool.execute(updateCategory, [
+        data.DescriptionCategory,
+        data.Source,
+        data.Code
+    ]);
+    if (result.affectedRows === 0) {
+        // Insert
+        const insertCategory = `INSERT INTO categories (Code, Description, Status, Source) 
+                                VALUES (?, ?, 1, ?)`;
+        const [insertResult] = await pool.execute(insertCategory, [
+            data.Code,
+            data.DescriptionCategory,
+            data.Source
+        ]);
+        // Response
+        console.log(`Categoria inserida, Código: ${data.Code}.`);
+        return;
+    }
+    // Response
+    console.log(`Categoria atualizada, Código: ${data.Code}.`);
+}
+
+
+
+// Função para atualizar/inserir em Caes
+async function updateCaes(data) {
+    // Update
+    const updateCae = `UPDATE caes SET Description = ?, Status = 1, Source = ? WHERE Code = ?`;
+    const [result] = await pool.execute(updateCae, [
+        data.DescriptionCae,
+        data.Source,
+        data.Code
+    ]);
+    if (result.affectedRows === 0) {
+        // Insert
+        const insertCae = `INSERT INTO caes (Code, Description, Status, Source) 
+                           VALUES (?, ?, 1, ?)`;
+        const [insertResult] = await pool.execute(insertCae, [
+            data.Code,
+            data.DescriptionCae,
+            data.Source
+        ]);
+        // Response
+        console.log(`CAE inserido, Código: ${data.Code}.`);
+        return;
+    }
+    // Response
+    console.log(`CAE atualizado, Código: ${data.Code}.`);
+}
+
+
+
+// Função para atualizar/inserir em Categories_Brands
+async function updateCategoriesBrands(data, idBrand) {
+    // Update
+    const updateCategoryBrand = `UPDATE categories_brands SET Source = ?, Updated_at = CURRENT_TIMESTAMP WHERE IDBrand = ? AND Category = ?`;
+    const [result] = await pool.execute(updateCategoryBrand, [
+        data.Source,
+        idBrand,
+        data.Category
+    ]);
+    if (result.affectedRows === 0) {
+        // Insert
+        const insertCategoryBrand = `INSERT INTO categories_brands (IDBrand, Category, Source, Created_at, Updated_at) 
+                                     VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`;
+        const [insertResult] = await pool.execute(insertCategoryBrand, [
+            idBrand,
+            data.Category,
+            data.Source
+        ]);
+        // Response
+        console.log(`Categoria associada com a Marca: ${idBrand}.`);
+        return;
+    }
+    // Response
+    console.log(`Categoria associada com a Marca: ${idBrand}.`);
+}
+
+
+
 // Função para atualizar em Caes_Companies
 async function updateCaesCompanies(data, idCompany) {
     // Apaga entradas na tabela associadas com a empresa
@@ -216,7 +300,7 @@ async function updateCaesCompanies(data, idCompany) {
         await pool.execute(insertCaesCompanies, [codeCae, idCompany, data.Source]);
     }
     // Response
-    console.log(`Cae's conectados com a empresa: ${idCompany}.`);
+    console.log(`Cae's associados com a empresa: ${idCompany}.`);
 }
 
 
@@ -256,6 +340,9 @@ module.exports = {
     updateContacts,
     updateLinks,
     updateReviews,
+    updateCaes,
     updateCaesCompanies,
+    updateCategoriesBrands,
+    updateCategories,
     updateRaciusLinks
 };
