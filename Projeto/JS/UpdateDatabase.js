@@ -308,20 +308,18 @@ async function updateCaesCompanies(data, idCompany) {
 // Função para atualizar/inserir dados na tabela RaciusLinks
 async function updateRaciusLinks(data) {
     // Update
-    const updateRaciusLink = `UPDATE raciuslinks SET URL = ?, Type = ? WHERE NIF = ?`;
+    const updateRaciusLink = `UPDATE raciuslinks SET URL = ? WHERE NIF = ?`;
     const [result] = await pool.execute(updateRaciusLink, [
         data.URL,
-        data.Type,
         data.NIF
     ]);
     // Insert
     if (result.affectedRows === 0) {
-        const insertRaciusLink = `INSERT INTO raciuslinks (NIF, URL, Type) 
-                                      VALUES (?, ?, ?)`;
+        const insertRaciusLink = `INSERT INTO raciuslinks (NIF, URL) 
+                                      VALUES (?, ?)`;
         const [insertResult] = await pool.execute(insertRaciusLink, [
             data.NIF,
             data.URL,
-            data.Type
         ]);
         // Response
         console.log(`Dados (RaciusLinks) inseridos, NIF: ${data.NIF}.`);

@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { updateRaciusLinks } = require('./UpdateDatabase');
+const { updateRaciusLinks } = require('../JS/UpdateDatabase');
 
 // Função para processar o ficheiro RaciusLinks.json 
 async function processFile(inputFile) {
@@ -30,7 +30,6 @@ async function processFile(inputFile) {
         const linkData = {
           NIF: nif.trim(),
           URL: link.trim(),
-          Type: 1 // Type fixado em 1
         };
 
         try {
@@ -48,5 +47,5 @@ async function processFile(inputFile) {
 }
 
 // Chama a função principal
-const inputFilePath = path.join(__dirname, 'raciusLinks.json'); // Caminho para o ficheiro json
+const inputFilePath = path.join(__dirname, '../Data/ListNifs.json'); // Caminho para o ficheiro json
 processFile(inputFilePath);

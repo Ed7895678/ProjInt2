@@ -1,5 +1,5 @@
 const fs = require('fs');
-const { updateCaes } = require('./UpdateDatabase');  
+const { updateCaes } = require('..Data/UpdateDatabase');  
 
 // Função para carregar os Cae's do ficheiro json
 function GetCaes() {

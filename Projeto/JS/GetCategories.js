@@ -1,5 +1,5 @@
 const fs = require('fs');  
-const { updateCaes, updateCategories } = require('./UpdateDatabase');  
+const { updateCaes, updateCategories } = require('..Data/UpdateDatabase');  
 
 // Função para carregar as categorias do ficheiro json
 function GetCategories() {

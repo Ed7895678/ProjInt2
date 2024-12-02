@@ -1,6 +1,7 @@
 // Funções de Atualização da Base de Dados
 
 // Atualizar a Base de Dados inteira
+// Caes e Categories
 
 
 
