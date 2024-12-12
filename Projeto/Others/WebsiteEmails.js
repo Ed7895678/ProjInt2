@@ -1,3 +1,4 @@
+// Guilherme Dias
 const puppeteer = require('puppeteer');
 const fs = require('fs').promises;
 const path = require('path');
