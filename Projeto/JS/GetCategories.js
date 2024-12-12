@@ -34,3 +34,8 @@ function GetCategories() {
 }
 
 GetCategories();
+
+// Exportação
+module.exports = {
+    GetCategories
+};

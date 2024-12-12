@@ -132,3 +132,8 @@ async function EInforma() {
 }
 
 EInforma();
+
+// Exportação
+module.exports = {
+    EInforma
+};

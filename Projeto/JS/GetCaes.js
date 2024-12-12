@@ -31,3 +31,8 @@ function GetCaes() {
 }  
 
 GetCaes();
+
+// Exportação
+module.exports = {
+    GetCaes
+};

@@ -1,14 +1,20 @@
 // Funções de Atualização da Base de Dados
+// Imports
+const { GetCaes } = require('./JS/GetCaes');
+const { GetCategories } = require('./JS/GetCategories');
+const { RaciusLinks } = require('./JS/RaciusLinksNifs');
+const { EInforma } = require('./JS/ScrapEinforma');
 
-// Atualizar a Base de Dados inteira
+// RaciusLinksNifs
+
+
+
 // Caes e Categories
 
 
 
-// Atualizar a lista de Empresas
+// Racius e EInforma
 
 
 
-// Atualizar a lista de Reviews
-
-
+// Atualizar tudo

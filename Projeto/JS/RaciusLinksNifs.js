@@ -3,7 +3,7 @@ const path = require('path');
 const { updateRaciusLinks } = require('./UpdateDatabase');
 
 // Função para processar o ficheiro RaciusLinks.json 
-async function processFile(inputFile) {
+async function RaciusLinks(inputFile) {
 
   fs.readFile(inputFile, 'utf8', async (err, data) => {
     if (err) {
@@ -48,4 +48,9 @@ async function processFile(inputFile) {
 
 // Chama a função principal
 const inputFilePath = path.join(__dirname, 'ListNifs.json'); // Caminho para o ficheiro json
-processFile(inputFilePath);
+RaciusLinks(inputFilePath);
+
+// Exportação
+module.exports = {
+  RaciusLinks
+};
