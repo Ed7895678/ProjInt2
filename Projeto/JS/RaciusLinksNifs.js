@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { updateRaciusLinks } = require('../JS/UpdateDatabase');
+const { updateRaciusLinks } = require('./UpdateDatabase');
 
 // Função para processar o ficheiro RaciusLinks.json 
 async function processFile(inputFile) {
@@ -22,18 +22,18 @@ async function processFile(inputFile) {
 
     // Processa cada objeto do arquivo JSON 
     for (const item of jsonData) {
-      const link = item.link; 
+      const url = item.url; 
       const nif = item.nif;   
 
-      if (link && nif) {
+      if (url && nif) {
         // Prepara os dados para inserção ou atualização
-        const linkData = {
+        const data = {
           NIF: nif.trim(),
-          URL: link.trim(),
+          URL: url.trim(),
         };
 
         try {
-          await updateRaciusLinks(linkData); // Chama a função externa updateRaciusLinks
+          await updateRaciusLinks(data); // Chama a função externa updateRaciusLinks
         } catch (error) {
           console.error(`Erro ao processar o NIF ${nif}:`, error);
         }
@@ -47,5 +47,5 @@ async function processFile(inputFile) {
 }
 
 // Chama a função principal
-const inputFilePath = path.join(__dirname, '../Data/ListNifs.json'); // Caminho para o ficheiro json
+const inputFilePath = path.join(__dirname, 'ListNifs.json'); // Caminho para o ficheiro json
 processFile(inputFilePath);

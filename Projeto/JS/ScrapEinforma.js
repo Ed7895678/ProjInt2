@@ -28,8 +28,8 @@ async function EInforma() {
         const nifs = nifRows.map(row => row.nif);
 
         // Processar cada NIF
-        for (const nif of nifs) {
-            const url = `https://www.einforma.pt/servlet/app/portal/ENTP/prod/ETIQUETA_EMPRESA_CONTRIBUINTE/nif/${nif}`;
+        for (const nifConsulta of nifs) {  // Renomeado 'nif' para 'nifConsulta' para evitar conflito
+            const url = `https://www.einforma.pt/servlet/app/portal/ENTP/prod/ETIQUETA_EMPRESA_CONTRIBUINTE/nif/${nifConsulta}`;
 
             try {
                 const response = await axios.get(url);
@@ -50,12 +50,12 @@ async function EInforma() {
                 // Verificação
                 if (nome === 'N/A' || ['(EXTINTA)', '(SEM ATIVIDADE)', '(FUSIONADA)', '(EM LIQUIDAÇÃO)', '(INSOLVENTE)'].some(status => nome.includes(status))) {
                     // Remover a entrada com NIF inválido
-                    await connection.execute('DELETE FROM raciuslinks WHERE nif = ?', [nif]);
-                    console.log(`Empresa com NIF ${nif} removida por ser inválida.`);
+                    await connection.execute('DELETE FROM raciuslinks WHERE nif = ?', [nifConsulta]);
+                    console.log(`Empresa com NIF ${nifConsulta} removida por ser inválida.\n`);
                     continue;
                 }
             
-                const nif = getText('td:contains("NIF:") + td a');
+                const nifEmpresa = getText('td:contains("NIF:") + td a');  // Renomeado para 'nifEmpresa'
                 const duns = getText('td:contains("DUNS:") + td');
                 const morada = getText('span[itemprop="streetaddress"]');
                 const codigoPostalFull = getText('span[itemprop="postalcode"]');
@@ -73,7 +73,7 @@ async function EInforma() {
 
                 // Atualizar informações no banco de dados
                 const CompanyData = {
-                    Vat: nif,
+                    Vat: nifEmpresa,  // Usando 'nifEmpresa' aqui
                     Source: "EInforma",
                     NameCompany: nome,
                     DUNS: duns,
@@ -85,7 +85,7 @@ async function EInforma() {
                 await updateCompanies(CompanyData);
             
                 const BrandData = {
-                    Vat: nif,
+                    Vat: nifEmpresa,  // Usando 'nifEmpresa' aqui
                     Source: "EInforma",
                     NameBrand: nome,
                     DescriptionBrand: 'N/A',
@@ -97,7 +97,7 @@ async function EInforma() {
                 await updateBrands(BrandData);
             
                 const AddressData = {
-                    Vat: nif,
+                    Vat: nifEmpresa,  // Usando 'nifEmpresa' aqui
                     Source: "EInforma",
                     Address: morada,
                     Location: localizacao,
@@ -111,7 +111,7 @@ async function EInforma() {
             
                 if (website !== 'N/A') {
                     const LinkData = {
-                        Vat: nif,
+                        Vat: nifEmpresa,  // Usando 'nifEmpresa' aqui
                         Source: "EInforma",
                         Url: website,
                         TypeLink: "Website",
@@ -120,7 +120,7 @@ async function EInforma() {
                 }
                 console.log(" ")
             } catch (error) {
-                console.error(`Erro ao processar o NIF ${nif}:`, error.message);
+                console.error(`Erro ao processar o NIF ${nifConsulta}:`, error.message `\n`);
             }
         }
 
