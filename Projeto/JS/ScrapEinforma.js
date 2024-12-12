@@ -28,7 +28,7 @@ async function EInforma() {
         const nifs = nifRows.map(row => row.nif);
 
         // Processar cada NIF
-        for (const nifConsulta of nifs) {  // Renomeado 'nif' para 'nifConsulta' para evitar conflito
+        for (const nifConsulta of nifs) {  
             const url = `https://www.einforma.pt/servlet/app/portal/ENTP/prod/ETIQUETA_EMPRESA_CONTRIBUINTE/nif/${nifConsulta}`;
 
             try {
@@ -55,7 +55,7 @@ async function EInforma() {
                     continue;
                 }
             
-                const nifEmpresa = getText('td:contains("NIF:") + td a');  // Renomeado para 'nifEmpresa'
+                const nifEmpresa = getText('td:contains("NIF:") + td a'); 
                 const duns = getText('td:contains("DUNS:") + td');
                 const morada = getText('span[itemprop="streetaddress"]');
                 const codigoPostalFull = getText('span[itemprop="postalcode"]');
@@ -73,7 +73,7 @@ async function EInforma() {
 
                 // Atualizar informações no banco de dados
                 const CompanyData = {
-                    Vat: nifEmpresa,  // Usando 'nifEmpresa' aqui
+                    Vat: nifEmpresa,  
                     Source: "EInforma",
                     NameCompany: nome,
                     DUNS: duns,
@@ -85,7 +85,7 @@ async function EInforma() {
                 await updateCompanies(CompanyData);
             
                 const BrandData = {
-                    Vat: nifEmpresa,  // Usando 'nifEmpresa' aqui
+                    Vat: nifEmpresa, 
                     Source: "EInforma",
                     NameBrand: nome,
                     DescriptionBrand: 'N/A',
@@ -97,7 +97,7 @@ async function EInforma() {
                 await updateBrands(BrandData);
             
                 const AddressData = {
-                    Vat: nifEmpresa,  // Usando 'nifEmpresa' aqui
+                    Vat: nifEmpresa,  
                     Source: "EInforma",
                     Address: morada,
                     Location: localizacao,
@@ -111,7 +111,7 @@ async function EInforma() {
             
                 if (website !== 'N/A') {
                     const LinkData = {
-                        Vat: nifEmpresa,  // Usando 'nifEmpresa' aqui
+                        Vat: nifEmpresa, 
                         Source: "EInforma",
                         Url: website,
                         TypeLink: "Website",

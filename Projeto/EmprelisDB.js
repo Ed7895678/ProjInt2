@@ -1,5 +1,5 @@
 // Funções de Atualização da Base de Dados
-// Imports
+
 const { GetCaes } = require('./JS/GetCaes');
 const { GetCategories } = require('./JS/GetCategories');
 const { RaciusLinks } = require('./JS/RaciusLinksNifs');
