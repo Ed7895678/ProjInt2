@@ -1,3 +1,4 @@
+// Eduardo Santos
 const axios = require('axios');
 const cheerio = require('cheerio');
 const { updateCompanies, updateBrands, updateAddresses, updateLinks } = require('./UpdateDatabase');

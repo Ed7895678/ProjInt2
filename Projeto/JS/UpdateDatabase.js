@@ -1,3 +1,4 @@
+// Eduardo Santos
 const mysql = require('mysql2/promise');
 
 // Configuração da pool de conexões
