@@ -1,57 +1,42 @@
 // Eduardo Santos
 const fs = require('fs');
-const path = require('path');
 const { updateRaciusLinks } = require('./UpdateDatabase');
 
-// Função para processar o ficheiro RaciusLinks.json 
-async function RaciusLinks(inputFile) {
-
-  fs.readFile(inputFile, 'utf8', async (err, data) => {
-    if (err) {
-      console.error('Erro ao ler o arquivo:', err);
-      return;
-    }
-
-    // Parse do ficheiro
-    let jsonData;
-    try {
-      jsonData = JSON.parse(data);
-    } catch (err) {
-      console.error('Erro ao parsear o arquivo JSON:', err);
-      return;
-    }
-
-    // Processa cada objeto do arquivo JSON 
-    for (const item of jsonData) {
-      const url = item.url; 
-      const nif = item.nif;   
-
-      if (url && nif) {
-        // Prepara os dados para inserção ou atualização
-        const data = {
-          NIF: nif.trim(),
-          URL: url.trim(),
-        };
+// Função para processar o ficheiro RaciusLinks.json
+function RaciusLinks() {
+    // Lê o arquivo ListNifs.json
+    fs.readFile('../Projeto/Data/ListNifs.json', 'utf8', (err, data) => {
+        if (err) {
+            console.error('Erro ao ler o arquivo:', err);
+            return;
+        }
 
         try {
-          await updateRaciusLinks(data); // Chama a função externa updateRaciusLinks
-        } catch (error) {
-          console.error(`Erro ao processar o NIF ${nif}:`, error);
+            const jsonData = JSON.parse(data);
+
+            // Processa cada objeto do arquivo JSON
+            jsonData.forEach((item) => {
+                const url = item.url;
+                const nif = item.nif;
+
+                if (url && nif) {
+                    const Data = {
+                        NIF: nif.trim(),
+                        URL: url.trim(),
+                    };
+
+                    // Chama a função externa
+                    updateRaciusLinks(Data)
+                        .catch((error) => console.error(`Erro ao processar o NIF ${nif}:`, error));
+                }
+            });
+        } catch (jsonErr) {
+            console.error('Erro ao processar o ficheiro JSON:', jsonErr);
         }
-      } else {
-        console.log(`Dados atualizados: ${JSON.stringify(item)}`);
-      }
-    }
-
-    console.log('Preenchimento da tabela RaciusLinks completo.');
-  });
+    });
 }
-
-// Chama a função principal
-const inputFilePath = path.join(__dirname, '../Data/ListNifs.json'); 
-RaciusLinks(inputFilePath);
 
 // Exportação
 module.exports = {
-  RaciusLinks
+    RaciusLinks
 };

@@ -5,7 +5,7 @@ const { updateCaes } = require('./UpdateDatabase');
 // Função para carregar os Cae's do ficheiro json
 function GetCaes() {
     // Lê o ficheiro JSON
-    fs.readFile('../Data/ListCaes.json', 'utf8', (err, data) => {
+    fs.readFile('../Projeto/Data/ListCaes.json', 'utf8', (err, data) => {
         if (err) {
             console.error('Erro ao ler o ficheiro:', err);
             return;
@@ -30,8 +30,6 @@ function GetCaes() {
         }
     });
 }  
-
-GetCaes();
 
 // Exportação
 module.exports = {

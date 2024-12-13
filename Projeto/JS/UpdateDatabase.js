@@ -366,7 +366,7 @@ async function updateCategories(data) {
     try {
         // Apagar todas as categorias
         const deleteCategories = `DELETE FROM categories`;
-        const [deleteResult] = await pool.execute(deleteCategories);
+        await pool.execute(deleteCategories);
 
         // Inserir novas categorias
         const insertCategory = `INSERT INTO categories (Code, Description, Status, Source) 
@@ -379,7 +379,6 @@ async function updateCategories(data) {
     } catch (error) {
         console.error('Erro ao apagar ou inserir categorias:', error);
     }
-    console.log("Categoria inserida na Base de Dados");
 }
 
 
@@ -389,7 +388,7 @@ async function updateCaes(data) {
     try {
         // Apagar todos os CAEs
         const deleteCaes = `DELETE FROM caes`;
-        const [deleteResult] = await pool.execute(deleteCaes);
+        await pool.execute(deleteCaes);
 
         // Inserir novos CAEs
         const insertCae = `INSERT INTO caes (Code, Description, Status, Source) 
@@ -402,7 +401,6 @@ async function updateCaes(data) {
     } catch (error) {
         console.error('Erro ao apagar ou inserir CAEs:', error);
     }
-    console.log("Cae inserido na Base de Dados");
 }
 
 
@@ -433,6 +431,10 @@ async function updateCategoriesBrands(data) {
         }
 
         const idBrand = brandRows[0].ID; // IDBrand da marca encontrada
+
+        // Apaga entradas na tabela associadas com a empresa
+        const deleteCategories = `DELETE FROM categories_brands WHERE IDBrand = ?`;
+        await pool.execute(deleteCategories, [idBrand]);
 
         // Inserir ou atualizar categoria associada à marca
         const insertCategoryBrand = `
@@ -520,8 +522,6 @@ async function updateRaciusLinks(data) {
             data.NIF || null,
             data.URL || null
         ]);
-        console.log(`Dados (RaciusLinks) inseridos, NIF: ${data.NIF}.`);
-
     } catch (error) {
         console.error('Erro ao apagar ou inserir dados de RaciusLinks:', error);
     }

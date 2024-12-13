@@ -10,13 +10,34 @@ const pool = mysql.createPool({
     database: 'projint2', 
 });
 
-
-
-
 const { GetCaes } = require('./JS/GetCaes');
 const { GetCategories } = require('./JS/GetCategories');
 const { RaciusLinks } = require('./JS/RaciusLinksNifs');
 const { EInforma } = require('./JS/ScrapEinforma');
+
+atualizarLinksRacius();
+atualizarCaeCat();
+atualizarEmpresas();
+
+// Função para atualizar os links e nif's do Racius
+async function atualizarLinksRacius() {
+    try {
+        // Função começa
+        await setFunctionStatus('RaciusLinksNifs', '1');
+
+        // Funções de Update
+        console.log('A iniciar a atualização dos links do Racius...');
+        const links = await RaciusLinks(); 
+        console.log('Links do Racius atualizados.\n');
+
+        // Função acaba
+        await setFunctionStatus('RaciusLinksNifs', '0');
+    } catch (erro) {
+        console.error('Erro ao atualizar links do Racius:', erro);
+    }
+}
+
+
 
 
 // Função para atualizar os CAE's
@@ -61,21 +82,20 @@ async function atualizarCategorias() {
 
 
 
-// Função para atualizar os links e nif's do Racius
-async function atualizarLinksRacius() {
+// Função para atualizar Caes e Categorias
+async function atualizarCaeCat() {
     try {
         // Função começa
-        await setFunctionStatus('RaciusLinksNifs', '1');
+        await setFunctionStatus('CaeCat', '1');
 
         // Funções de Update
-        console.log('A iniciar a atualização dos links do Racius...');
-        const links = await RaciusLinks(); 
-        console.log('Links do Racius atualizados.\n');
+        await atualizarCaes();
+        await atualizarCategorias();
 
         // Função acaba
-        await setFunctionStatus('RaciusLinksNifs', '0');
+        await setFunctionStatus('CaeCat', '1');
     } catch (erro) {
-        console.error('Erro ao atualizar links do Racius:', erro);
+        console.error("Erro ao realizar a atualização de Cae's ou Categorias:", erro);
     }
 }
 
@@ -123,28 +143,6 @@ async function atualizarRacius() {
 
 
 
-
-// Função para atualizar Caes e Categorias
-async function atualizarCaeCat() {
-    try {
-        // Função começa
-        await setFunctionStatus('CaeCat', '1');
-
-        // Funções de Update
-        await atualizarCaes();
-        await atualizarCategorias();
-        console.log("Atualização de Caes e Categorias concluída!\n");
-
-        // Função acaba
-        await setFunctionStatus('CaeCat', '1');
-    } catch (erro) {
-        console.error("Erro ao realizar a atualização de Cae's:", erro);
-    }
-}
-
-
-
-
 // Função para atualizar tudo
 async function atualizarEmpresas() {
     try {
@@ -153,8 +151,7 @@ async function atualizarEmpresas() {
 
         // Funções de Update
         await atualizarEInforma();
-        // await atualizarRacius();
-        console.log('Atualização de empresas concluída!\n');
+        await atualizarRacius();
 
         // Função acaba
         await setFunctionStatus('Empresas', '0');

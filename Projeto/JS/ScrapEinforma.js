@@ -145,23 +145,16 @@ async function EInforma() {
                         await updateCategoriesBrands(CategoriaData);
                     }
                 }
-                
-                
-
-                console.log(" ")
+                console.log("\n") // Espaço entre empresas na consola
             } catch (error) {
                 console.error(`Erro ao processar o NIF ${nifConsulta}.\n`);
             }
         }
-
         await connection.end();
-        console.log("Processamento das empresas no EInforma concluído.");
     } catch (error) {
         console.error("Erro ao buscar NIFs da tabela RaciusLinks.");
     }
 }
-
-EInforma();
 
 // Exportação
 module.exports = {

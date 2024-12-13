@@ -4,8 +4,9 @@ const { updateCaes, updateCategories } = require('./UpdateDatabase');
 
 // Função para carregar as categorias do ficheiro json
 function GetCategories() {
+
     // Lê o arquivo ListCaes.json
-    fs.readFile('../Data/ListCaes.json', 'utf8', (err, data) => {
+    fs.readFile('../Projeto/Data/ListCaes.json', 'utf8', (err, data) => {
         if (err) {
             console.error('Erro ao ler o arquivo:', err);
             return;
@@ -33,8 +34,6 @@ function GetCategories() {
         }
     });
 }
-
-GetCategories();
 
 // Exportação
 module.exports = {
