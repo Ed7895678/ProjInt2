@@ -1,7 +1,7 @@
 // Eduardo Santos
 const axios = require('axios');
 const cheerio = require('cheerio');
-const { updateCompanies, updateBrands, updateAddresses, updateLinks } = require('./UpdateDatabase');
+const { updateCompanies, updateBrands, updateAddresses, updateLinks, updateCaesCompanies, updateCategoriesBrands } = require('./UpdateDatabase');
 const mysql = require('mysql2/promise');
 
 // Configuração da pool de conexões
@@ -66,10 +66,15 @@ async function EInforma() {
                 const caes = $('td:contains("Atividade (CAE):") + td a')
                     .map((_, el) => {
                         const cae = $(el).text().trim();
-                        const [numeroCae] = cae.split(' - ');
-                        return numeroCae;
-                    }).get() || null;
-                    
+                        const [numeroCae] = cae.split(' - '); 
+                        return numeroCae; // Extrai apenas o número completo do CAE
+                    })
+                    .get();
+
+                const categorias = [...new Set(caes.map(cae => cae.substring(0, 3)))]; 
+
+
+
                 const website = getAttr('td:contains("Website:") + td a', 'href') || null;
 
                 // Atualizar informações no banco de dados
@@ -116,19 +121,43 @@ async function EInforma() {
                         Source: "EInforma",
                         Url: website,
                         TypeLink: "Website",
-                    };
+                    }
                     await updateLinks(LinkData);
                 }
+
+                if (caes.length > 0) {
+
+                    for (const cae of caes) {
+                        const CaesData = {
+                            Vat: nifEmpresa,
+                            Cae: cae, 
+                            Source: 'EInforma',
+                        };
+                        await updateCaesCompanies(CaesData);
+                    }
+                
+                    for (const categoria of categorias) {
+                        const CategoriaData = {
+                            Vat: nifEmpresa,
+                            Categoria: categoria, 
+                            Source: 'EInforma',
+                        };
+                        await updateCategoriesBrands(CategoriaData);
+                    }
+                }
+                
+                
+
                 console.log(" ")
             } catch (error) {
-                console.error(`Erro ao processar o NIF ${nifConsulta}:`, error.message `\n`);
+                console.error(`Erro ao processar o NIF ${nifConsulta}.\n`);
             }
         }
 
         await connection.end();
         console.log("Processamento das empresas no EInforma concluído.");
     } catch (error) {
-        console.error("Erro ao buscar NIFs da tabela RaciusLinks:", error.message);
+        console.error("Erro ao buscar NIFs da tabela RaciusLinks.");
     }
 }
 

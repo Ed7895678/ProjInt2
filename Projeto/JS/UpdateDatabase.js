@@ -379,7 +379,7 @@ async function updateCategories(data) {
     } catch (error) {
         console.error('Erro ao apagar ou inserir categorias:', error);
     }
-    console.log("Categorias inseridas na Base de Dados");
+    console.log("Categoria inserida na Base de Dados");
 }
 
 
@@ -402,14 +402,21 @@ async function updateCaes(data) {
     } catch (error) {
         console.error('Erro ao apagar ou inserir CAEs:', error);
     }
-    console.log("Categorias inseridas na Base de Dados");
+    console.log("Cae inserido na Base de Dados");
 }
 
 
 
-// Função para inserir em CategoriesBrands
+
+// Função para atualizar categorias associadas a marcas
 async function updateCategoriesBrands(data) {
     try {
+        // Validações básicas
+        if (!data || !data.Vat || !data.Categoria || !data.Source) {
+            console.error("Os dados fornecidos são inválidos ou estão incompletos.");
+            return;
+        }
+
         // Pesquisa o IDBrand com base no VAT
         const getIdBrandQuery = `
             SELECT b.ID 
@@ -417,72 +424,84 @@ async function updateCategoriesBrands(data) {
             JOIN brands b ON c.ID = b.IDCompany
             WHERE c.VAT = ?
         `;
-        const [companyRows] = await pool.execute(getIdBrandQuery, [data.Vat]);
+        const [brandRows] = await pool.execute(getIdBrandQuery, [data.Vat]);
 
         // Verifica se encontrou o IDBrand
+        if (brandRows.length === 0) {
+            console.log(`Nenhuma marca encontrada para o VAT: ${data.Vat}`);
+            return;
+        }
+
+        const idBrand = brandRows[0].ID; // IDBrand da marca encontrada
+
+        // Inserir ou atualizar categoria associada à marca
+        const insertCategoryBrand = `
+            INSERT INTO categories_brands (IDBrand, Category, Source) 
+            VALUES (?, ?, ?)
+            ON DUPLICATE KEY UPDATE Source = VALUES(Source)
+        `;
+        await pool.execute(insertCategoryBrand, [
+            idBrand,
+            data.Categoria,
+            data.Source || null,
+        ]);
+
+        console.log(`Categoria '${data.Categoria}' associada à marca com ID ${idBrand}.`);
+    } catch (error) {
+        console.error("Erro ao inserir categorias associadas à marca:", error.message);
+    }
+}
+
+
+
+
+
+
+
+// Função para atualizar a tabela Caes_Companies
+async function updateCaesCompanies(data) {
+    try {
+        // Validações básicas
+        if (!data || !data.Vat || !data.Cae || !data.Source) {
+            console.error("Os dados fornecidos são inválidos ou estão incompletos.");
+            return;
+        }
+
+        // Pesquisa o IDCompany com base no VAT
+        const getIdCompanyQuery = `
+            SELECT b.ID 
+            FROM companies c
+            JOIN brands b ON c.ID = b.IDCompany
+            WHERE c.VAT = ?
+        `;
+        const [companyRows] = await pool.execute(getIdCompanyQuery, [data.Vat]);
+
+        // Verifica se encontrou o IDCompany
         if (companyRows.length === 0) {
             console.log(`Nenhuma empresa encontrada com o VAT: ${data.Vat}`);
             return;
         }
 
-        const idBrand = companyRows[0].ID; // IDBrand da empresa encontrada
+        const idCompany = companyRows[0].ID; // IDCompany da empresa encontrada
 
-        // Apagar todas as categorias associadas a essa marca (IDBrand)
-        const deleteCategoriesBrand = `DELETE FROM categories_brands WHERE IDBrand = ?`;
-        const [deleteResult] = await pool.execute(deleteCategoriesBrand, [idBrand]);
-        console.log(`Categorias associadas à Marca ${idBrand} foram apagadas.`);
+        // Apaga entradas na tabela associadas com a empresa
+        const deleteCaes = `DELETE FROM caes_companies WHERE IDCompany = ?`;
+        await pool.execute(deleteCaes, [idCompany]);
 
-        // Inserir nova categoria associada à marca
-        const insertCategoryBrand = `INSERT INTO categories_brands (IDBrand, Category, Source, Created_at, Updated_at) 
-                                     VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`;
-        const [insertResult] = await pool.execute(insertCategoryBrand, [
-            idBrand || null,
-            data.Category || null,
-            data.Source || null
-        ]);
-        console.log(`Categoria ${data.Category} associada à Marca ${idBrand}.`);
+        // Inserir novo registro na tabela Caes_Companies
+        const insertCaesCompanies = `
+            INSERT INTO caes_companies (CAE, IDCompany, Source) 
+            VALUES (?, ?, ?)
+        `;
+        await pool.execute(insertCaesCompanies, [data.Cae, idCompany, data.Source]);
 
+        // Response
+        console.log(`CAE '${data.Cae}' associado com a empresa de ID ${idCompany}.`);
     } catch (error) {
-        console.error('Erro ao apagar ou inserir categorias associadas à marca:', error);
+        console.error("Erro ao atualizar Caes_Companies:", error.message);
     }
 }
 
-
-
-
-
-// Função para inserir em Caes_Companies
-async function updateCaesCompanies(data) {
-    // Pesquisa o IDCompany com base no VAT
-    const getIdBrandQuery = `
-        SELECT b.ID 
-        FROM companies c
-        JOIN brands b ON c.ID = b.IDCompany
-        WHERE c.VAT = ?
-    `;
-    const [companyRows] = await pool.execute(getIdBrandQuery, [data.Vat]);
-
-    // Verifica se encontrou o IDCompany
-    if (companyRows.length === 0) {
-        console.log(`Nenhuma empresa encontrada com o VAT: ${data.Vat}`);
-        return;
-    }
-
-    const idCompany = companyRows[0].ID; // IDCompany da empresa encontrada
-
-    // Apaga entradas na tabela associadas com a empresa
-    const deleteCaes = `DELETE FROM caes_companies WHERE IDCompany = ?`;
-    await pool.execute(deleteCaes, [idCompany]);
-
-    // Insert
-    const insertCaesCompanies = `INSERT INTO caes_companies (CAE, IDCompany, Source) VALUES (?, ?, ?)`;
-    for (const codeCae of data.Caes) {
-        await pool.execute(insertCaesCompanies, [codeCae, idCompany, data.Source]);
-    }
-
-    // Response
-    console.log(`Cae's associados com a empresa: ${idCompany}.`);
-}
 
 
 

@@ -39,7 +39,7 @@ async function RaciusLinks(inputFile) {
           console.error(`Erro ao processar o NIF ${nif}:`, error);
         }
       } else {
-        console.log(`Dados incompletos encontrados: ${JSON.stringify(item)}`);
+        console.log(`Dados atualizados: ${JSON.stringify(item)}`);
       }
     }
 
@@ -48,7 +48,7 @@ async function RaciusLinks(inputFile) {
 }
 
 // Chama a função principal
-const inputFilePath = path.join(__dirname, 'ListNifs.json'); // Caminho para o ficheiro json
+const inputFilePath = path.join(__dirname, '../Data/ListNifs.json'); 
 RaciusLinks(inputFilePath);
 
 // Exportação

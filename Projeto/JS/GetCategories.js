@@ -1,11 +1,11 @@
 // Eduardo Santos
 const fs = require('fs');  
-const { updateCaes, updateCategories } = require('..Data/UpdateDatabase');  
+const { updateCaes, updateCategories } = require('./UpdateDatabase');  
 
 // Função para carregar as categorias do ficheiro json
 function GetCategories() {
     // Lê o arquivo ListCaes.json
-    fs.readFile('ListCaes.json', 'utf8', (err, data) => {
+    fs.readFile('../Data/ListCaes.json', 'utf8', (err, data) => {
         if (err) {
             console.error('Erro ao ler o arquivo:', err);
             return;

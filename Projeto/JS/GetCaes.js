@@ -1,11 +1,11 @@
 // Eduardo Santos
 const fs = require('fs');
-const { updateCaes } = require('..Data/UpdateDatabase');  
+const { updateCaes } = require('./UpdateDatabase');  
 
 // Função para carregar os Cae's do ficheiro json
 function GetCaes() {
     // Lê o ficheiro JSON
-    fs.readFile('ListCaes.json', 'utf8', (err, data) => {
+    fs.readFile('../Data/ListCaes.json', 'utf8', (err, data) => {
         if (err) {
             console.error('Erro ao ler o ficheiro:', err);
             return;
