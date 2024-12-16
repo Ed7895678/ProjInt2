@@ -15,6 +15,7 @@ const { GetCategories } = require('./JS/GetCategories');
 const { RaciusLinks } = require('./JS/RaciusLinksNifs');
 const { EInforma } = require('./JS/ScrapEinforma');
 
+resetStatus()
 atualizarLinksRacius();
 atualizarCaeCat();
 atualizarEmpresas();
@@ -176,5 +177,22 @@ async function setFunctionStatus(functionName, status) {
         connection.release();
     } catch (error) {
         console.error(`Erro ao atualizar o status da função ${functionName}:`, error);
+    }
+}
+
+// Função auxiliar para atualizar o status na base de dados
+async function resetStatus() {
+    try {
+        // Conexão com a base de dados
+        const connection = await pool.getConnection();
+
+        // Atualizar o status na base de dados (escapando 'function')
+        const query = 'UPDATE function_status SET status = 0';
+        await connection.execute(query);
+
+        connection.release();
+        console.error(`Status das Funções Resetados`);
+    } catch (error) {
+        console.error(`Erro ao fazer reset dos status:`, error);
     }
 }
