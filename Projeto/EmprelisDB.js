@@ -14,11 +14,13 @@ const { GetCaes } = require('./JS/GetCaes');
 const { GetCategories } = require('./JS/GetCategories');
 const { RaciusLinks } = require('./JS/RaciusLinksNifs');
 const { EInforma } = require('./JS/ScrapEinforma');
+const { Racius } = require('./JS/Racius');
 
 resetStatus()
 atualizarLinksRacius();
 atualizarCaeCat();
 atualizarEmpresas();
+resetStatus()
 
 // Função para atualizar os links e nif's do Racius
 async function atualizarLinksRacius() {
@@ -94,7 +96,7 @@ async function atualizarCaeCat() {
         await atualizarCategorias();
 
         // Função acaba
-        await setFunctionStatus('CaeCat', '1');
+        await setFunctionStatus('CaeCat', '0');
     } catch (erro) {
         console.error("Erro ao realizar a atualização de Cae's ou Categorias:", erro);
     }
@@ -132,11 +134,11 @@ async function atualizarRacius() {
 
         // Funções de Update
         console.log('A iniciar a atualização dos dados do Racius...');
-        // Função do racius
+        const Racius = await Racius(); 
         console.log("Dados do Racius atualizados.\n");
 
         // Função acaba
-        await setFunctionStatus('Racius', '1');
+        await setFunctionStatus('Racius', '0');
     } catch (erro) {
         console.error("Erro ao realizar a atualização do Racius:", erro);
     }
@@ -179,6 +181,9 @@ async function setFunctionStatus(functionName, status) {
         console.error(`Erro ao atualizar o status da função ${functionName}:`, error);
     }
 }
+
+
+
 
 // Função auxiliar para atualizar o status na base de dados
 async function resetStatus() {
