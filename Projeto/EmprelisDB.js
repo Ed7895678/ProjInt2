@@ -15,11 +15,12 @@ const { GetCategories } = require('./JS/GetCategories');
 const { RaciusLinks } = require('./JS/RaciusLinksNifs');
 const { EInforma } = require('./JS/ScrapEinforma');
 const { Racius } = require('./JS/Racius');
+const { Numeros } = require('./JS/WebsiteTel');
+const { Emails } = require('./JS/WebsiteEmails');
 
 resetStatus()
-atualizarLinksRacius();
-atualizarCaeCat();
-atualizarEmpresas();
+atualizarEmails();
+atualizarNumeros();
 resetStatus()
 
 // Função para atualizar os links e nif's do Racius
@@ -85,20 +86,42 @@ async function atualizarCategorias() {
 
 
 
-// Função para atualizar Caes e Categorias
-async function atualizarCaeCat() {
+// Função para atualizar as categorias
+async function atualizarEmails() {
     try {
         // Função começa
-        await setFunctionStatus('CaeCat', '1');
+        await setFunctionStatus('Emails', '1');
 
         // Funções de Update
-        await atualizarCaes();
-        await atualizarCategorias();
+        console.log('A iniciar a atualização dos Emails...');
+        const Emails = await Emails(); 
+        console.log('Emails atualizadas.\n');
 
         // Função acaba
-        await setFunctionStatus('CaeCat', '0');
+        await setFunctionStatus('Emails', '0');
     } catch (erro) {
-        console.error("Erro ao realizar a atualização de Cae's ou Categorias:", erro);
+        console.error('Erro ao atualizar emails:', erro);
+    }
+}
+
+
+
+
+// Função para atualizar as categorias
+async function atualizarNumeros() {
+    try {
+        // Função começa
+        await setFunctionStatus('Numeros', '1');
+
+        // Funções de Update
+        console.log('A iniciar a atualização dos Numeros...');
+        const Numeros = await Numeros(); 
+        console.log('Numeros atualizados.\n');
+
+        // Função acaba
+        await setFunctionStatus('Numeros', '0');
+    } catch (erro) {
+        console.error('Erro ao atualizar numeros:', erro);
     }
 }
 
@@ -160,6 +183,26 @@ async function atualizarEmpresas() {
         await setFunctionStatus('Empresas', '0');
     } catch (erro) {
         console.error('Erro ao realizar a atualização de empresas:', erro);
+    }
+}
+
+
+
+
+// Função para atualizar Caes e Categorias
+async function atualizarCaeCat() {
+    try {
+        // Função começa
+        await setFunctionStatus('CaeCat', '1');
+
+        // Funções de Update
+        await atualizarCaes();
+        await atualizarCategorias();
+
+        // Função acaba
+        await setFunctionStatus('CaeCat', '0');
+    } catch (erro) {
+        console.error("Erro ao realizar a atualização de Cae's ou Categorias:", erro);
     }
 }
 

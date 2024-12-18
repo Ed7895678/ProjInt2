@@ -204,15 +204,17 @@ async function resetProcessingStatus() {
 async function getUrlsFromDatabase() {
     try {
         const [rows] = await pool.query(
-            `SELECT l.ID, l.Url, l.IDBrand 
+            `SELECT l.ID, l.Url, l.IDBrand, b.VAT
              FROM links l 
+             INNER JOIN brands b ON l.IDBrand = b.ID
              WHERE l.Type = "website" 
              ORDER BY l.ID ASC`
         );
         return rows.map(row => ({
             id: row.ID,
             url: row.Url,
-            brandId: row.IDBrand
+            brandId: row.IDBrand,
+            vat: row.VAT
         }));
     } catch (error) {
         console.error('Error fetching URLs from database:', error);
@@ -318,15 +320,17 @@ async function autoScroll(page) {
     });
 }
 
-async function saveEmailsToDatabase(url, emails, brandId) {
+async function saveEmailsToDatabase(url, emails, vat) {
     try {
         for (const email of emails) {
             const contactData = {
                 Contact: email,
                 TypeContact: 'email',
-                Source: "Website"
+                Source: "Website",
+                Vat: vat
             };
-            await updateContacts(contactData, brandId);
+            
+            await updateContacts(contactData);
         }
 
         console.log(`Processed ${emails.length} emails for URL: ${url}`);
@@ -335,7 +339,7 @@ async function saveEmailsToDatabase(url, emails, brandId) {
     }
 }
 
-async function scrapeEmailsFromUrl(browser, url, brandId) {
+async function scrapeEmailsFromUrl(browser, url, vat) {
     const page = await browser.newPage();
     const allEmails = new Set();
     const visitedUrls = new Set();
@@ -400,7 +404,7 @@ async function scrapeEmailsFromUrl(browser, url, brandId) {
         console.error(`Error processing ${url}:`, error);
     } finally {
         if (allEmails.size > 0) {
-            await saveEmailsToDatabase(url, Array.from(allEmails), brandId);
+            await saveEmailsToDatabase(url, Array.from(allEmails), vat);
         }
         await page.close();
     }
@@ -418,12 +422,12 @@ async function extractEmails(urls) {
         const allEmails = new Set();
 
         try {
-            for (const {id, url, brandId} of urls) {
-                console.log(`\nProcessing site: ${url} (ID: ${id}, Brand: ${brandId})`);
+            for (const {id, url, vat} of urls) {
+                console.log(`\nProcessing site: ${url} (ID: ${id}, VAT: ${vat})`);
                 await updateLinkStatus(id, 2); // Status 2: Processing
                 
                 try {
-                    const emails = await scrapeEmailsFromUrl(browser, url, brandId);
+                    const emails = await scrapeEmailsFromUrl(browser, url, vat);
                     emails.forEach(email => allEmails.add(email));
                     await updateLinkStatus(id, 3); // Status 3: Processed
                 } catch (error) {
