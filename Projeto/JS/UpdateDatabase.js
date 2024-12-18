@@ -417,10 +417,10 @@ async function updateCategoriesBrands(data) {
 
         // Pesquisa o IDBrand com base no VAT
         const getIdBrandQuery = `
-            SELECT b.ID 
+            SELECT b.ID AS IDBrand
             FROM companies c
             JOIN brands b ON c.ID = b.IDCompany
-            WHERE c.VAT = ?
+            WHERE c.VAT = ?;
         `;
         const [brandRows] = await pool.execute(getIdBrandQuery, [data.Vat]);
 
@@ -430,9 +430,9 @@ async function updateCategoriesBrands(data) {
             return;
         }
 
-        const idBrand = brandRows[0].ID; // IDBrand da marca encontrada
+        const idBrand = brandRows[0].IDBrand; // IDBrand da marca encontrada
 
-        // Apaga entradas na tabela associadas com a empresa
+        // Apaga entradas na tabela associadas com a marca
         const deleteCategories = `DELETE FROM categories_brands WHERE IDBrand = ?`;
         await pool.execute(deleteCategories, [idBrand]);
 
@@ -445,17 +445,14 @@ async function updateCategoriesBrands(data) {
         await pool.execute(insertCategoryBrand, [
             idBrand,
             data.Categoria,
-            data.Source || null,
+            data.Source,
         ]);
 
         console.log(`Categoria '${data.Categoria}' associada à marca com ID ${idBrand}.`);
     } catch (error) {
-        console.error("Erro ao inserir categorias associadas à marca:", error.message);
+        console.error("Erro ao atualizar categorias associadas à marca:", error);
     }
 }
-
-
-
 
 
 
@@ -471,10 +468,9 @@ async function updateCaesCompanies(data) {
 
         // Pesquisa o IDCompany com base no VAT
         const getIdCompanyQuery = `
-            SELECT b.ID 
+            SELECT c.ID AS IDCompany
             FROM companies c
-            JOIN brands b ON c.ID = b.IDCompany
-            WHERE c.VAT = ?
+            WHERE c.VAT = ?;
         `;
         const [companyRows] = await pool.execute(getIdCompanyQuery, [data.Vat]);
 
@@ -484,7 +480,7 @@ async function updateCaesCompanies(data) {
             return;
         }
 
-        const idCompany = companyRows[0].ID; // IDCompany da empresa encontrada
+        const idCompany = companyRows[0].IDCompany; // IDCompany da empresa encontrada
 
         // Apaga entradas na tabela associadas com a empresa
         const deleteCaes = `DELETE FROM caes_companies WHERE IDCompany = ?`;
@@ -497,12 +493,12 @@ async function updateCaesCompanies(data) {
         `;
         await pool.execute(insertCaesCompanies, [data.Cae, idCompany, data.Source]);
 
-        // Response
         console.log(`CAE '${data.Cae}' associado com a empresa de ID ${idCompany}.`);
     } catch (error) {
-        console.error("Erro ao atualizar Caes_Companies:", error.message);
+        console.error("Erro ao atualizar Caes_Companies:", error);
     }
 }
+
 
 
 

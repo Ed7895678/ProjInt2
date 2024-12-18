@@ -5,6 +5,38 @@ const path = require('path');
 const net = require('net');
 const { SocksProxyAgent } = require('socks-proxy-agent');
 const mysql = require('mysql2/promise');
+const { 
+    updateCompanies,
+    updateBrands,
+    updateAddresses,
+    updateCaesCompanies,
+    updateCategoriesBrands
+} = require('../JS/UpdateDatabase')
+
+// Add colors for console logging
+const colors = {
+    reset: '\x1b[0m',
+    bright: '\x1b[1m',
+    dim: '\x1b[2m',
+    red: '\x1b[31m',
+    green: '\x1b[32m',
+    yellow: '\x1b[33m',
+    blue: '\x1b[34m',
+    magenta: '\x1b[35m',
+    cyan: '\x1b[36m',
+    white: '\x1b[37m'
+};
+
+// Logger utility
+const logger = {
+    info: (msg) => console.log(`${colors.cyan}[INFO]${colors.reset} ${msg}`),
+    success: (msg) => console.log(`${colors.green}[SUCCESS]${colors.reset} ${msg}`),
+    error: (msg) => console.log(`${colors.red}[ERROR]${colors.reset} ${msg}`),
+    warn: (msg) => console.log(`${colors.yellow}[WARNING]${colors.reset} ${msg}`),
+    progress: (msg) => console.log(`${colors.magenta}[PROGRESS]${colors.reset} ${msg}`),
+    network: (msg) => console.log(`${colors.blue}[NETWORK]${colors.reset} ${msg}`),
+    db: (msg) => console.log(`${colors.cyan}[DATABASE]${colors.reset} ${msg}`)
+};
 
 // Configuração do Tor
 const TOR_SOCKS_PROXY = 'socks5://127.0.0.1:9050';
@@ -29,9 +61,11 @@ const pool = mysql.createPool({
 });
 
 async function sendTorCommand(command) {
+    logger.network(`Attempting to send Tor command: ${command || 'AUTHENTICATE'}`);
     return new Promise((resolve, reject) => {
         const client = new net.Socket();
         client.connect(TOR_CONTROL_PORT, '127.0.0.1', () => {
+            logger.network('Connected to Tor control port');
             client.write(`AUTHENTICATE "${TOR_CONTROL_PASSWORD}"\n`);
         });
 
@@ -45,6 +79,7 @@ async function sendTorCommand(command) {
                     if (data.startsWith('250')) {
                         authenticated = true;
                         data = '';
+                        logger.success('Tor authentication successful');
                         if (command) {
                             client.write(`${command}\r\n`);
                         } else {
@@ -53,6 +88,7 @@ async function sendTorCommand(command) {
                         }
                     } else {
                         client.end();
+                        logger.error('Tor authentication failed');
                         reject(new Error('Authentication failed'));
                     }
                 } else {
@@ -67,29 +103,32 @@ async function sendTorCommand(command) {
             }
         });
 
-        client.on('error', reject);
+        client.on('error', (err) => {
+            logger.error(`Tor connection error: ${err.message}`);
+            reject(err);
+        });
     });
 }
 
 async function renewTorCircuit() {
     try {
-        console.log(`[${new Date().toLocaleTimeString()}] Enviando sinal NEWNYM para Tor.`);
+        logger.network('Initiating Tor circuit renewal...');
         const response = await sendTorCommand('SIGNAL NEWNYM');
         if (!response.startsWith('250')) {
-            throw new Error('Falha ao enviar sinal NEWNYM');
+            throw new Error('Failed to send NEWNYM signal');
         }
         newnymRequestCount++;
         lastRenewTime = Date.now();
-        console.log(`[${new Date().toLocaleTimeString()}] Circuito Tor renovado com sucesso.`);
+        logger.success('Tor circuit renewed successfully');
     } catch (error) {
-        console.error('Erro ao renovar circuito Tor:', error);
+        logger.error(`Failed to renew Tor circuit: ${error.message}`);
         throw error;
     }
 }
 
 async function safeRenewTorCircuit() {
     if (isRenewing) {
-        console.log(`[${new Date().toLocaleTimeString()}] Renovação em andamento. Aguardando...`);
+        logger.warn('Circuit renewal already in progress, waiting...');
         while (isRenewing) {
             await new Promise(resolve => setTimeout(resolve, 1000));
         }
@@ -103,10 +142,12 @@ async function safeRenewTorCircuit() {
 
         if (timeSinceLastRenew < MIN_RENEW_INTERVAL) {
             const waitTime = MIN_RENEW_INTERVAL - timeSinceLastRenew;
+            logger.info(`Waiting ${waitTime}ms before renewing circuit`);
             await new Promise(resolve => setTimeout(resolve, waitTime));
         }
 
         await renewTorCircuit();
+        logger.info('Waiting 10 seconds for circuit stabilization...');
         await new Promise(resolve => setTimeout(resolve, 10000));
     } finally {
         isRenewing = false;
@@ -115,127 +156,53 @@ async function safeRenewTorCircuit() {
 
 async function getCurrentIP() {
     try {
+        logger.network('Fetching current IP address...');
         const agent = new SocksProxyAgent(TOR_SOCKS_PROXY);
         const response = await axios.get('https://api.ipify.org?format=json', {
             httpAgent: agent,
             httpsAgent: agent,
             timeout: 10000,
         });
+        logger.success(`Current IP: ${response.data.ip}`);
         return response.data.ip;
     } catch (error) {
-        console.error('Erro ao obter IP através do Tor:', error);
+        logger.error(`Failed to get IP address: ${error.message}`);
         return null;
-    }
-}
-
-function extractSlug(url) {
-    return path.basename(url.trim());
-}
-
-async function updateCategoriesBrands(data) {
-    try {
-        // Primeiro verifica e filtra CAEs inválidos e limita a 3 caracteres
-        const validCaes = data.Caes.filter(cae => {
-            // Remove qualquer caractere não numérico
-            const cleanCae = cae.replace(/\D/g, '');
-            // Verifica se tem pelo menos 1 dígito e não é 'N/A'
-            return cleanCae.length > 0 && cae !== 'N/A';
-        }).map(cae => {
-            // Limita a exatamente 3 dígitos e remove caracteres não numéricos
-            return cae.replace(/\D/g, '').substring(0, 3);
-        });
-
-        if (validCaes.length === 0) {
-            console.log(`Nenhum CAE válido para categories_brands. VAT: ${data.Vat}`);
-            return;
-        }
-
-        const [brandRows] = await pool.execute(
-            `SELECT b.ID 
-             FROM brands b
-             JOIN companies c ON b.IDCompany = c.ID
-             WHERE c.VAT = ?`,
-            [data.Vat]
-        );
-
-        if (brandRows.length === 0) {
-            console.log(`Nenhuma marca encontrada com o VAT: ${data.Vat}`);
-            return;
-        }
-
-        const idBrand = brandRows[0].ID;
-
-        // Apagar categorias existentes para esta marca
-        await pool.execute(
-            'DELETE FROM categories_brands WHERE IDBrand = ?',
-            [idBrand]
-        );
-
-        // Para cada CAE, verifica se existe na tabela categories
-        for (const cae of validCaes) {
-            // Verifica se a categoria existe
-            const [categoryExists] = await pool.execute(
-                'SELECT Code FROM categories WHERE Code = ?',
-                [cae]
-            );
-
-            if (categoryExists.length > 0) {
-                await pool.execute(
-                    `INSERT INTO categories_brands (IDBrand, Category, Source) 
-                     VALUES (?, ?, ?)`,
-                    [idBrand, cae, data.Source]
-                );
-                console.log(`Categoria ${cae} associada à marca ID: ${idBrand}`);
-            } else {
-                console.log(`Categoria ${cae} não existe na tabela categories, pulando...`);
-            }
-        }
-
-        console.log(`Categories_brands atualizada para marca ID: ${idBrand}`);
-    } catch (error) {
-        console.error('Erro ao atualizar categories_brands:', error);
-        // Não propaga o erro para não interromper o processo principal
-        console.log('Continuando processo apesar do erro em categories_brands');
     }
 }
 
 async function insertCompanyData(data) {
     try {
-        const [result] = await pool.execute(
-            `INSERT INTO companies (Name, Description, Legal, DUNS, VAT, Score, Sentiment, Status, Source, Created_at, Updated_at) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-             ON DUPLICATE KEY UPDATE 
-             Name = VALUES(Name), 
-             Description = VALUES(Description),
-             Updated_at = CURRENT_TIMESTAMP`,
-            [
-                data.companyName,
-                data.companyInfo,
-                '',
-                '',
-                data.nif,
-                0,
-                0,
-                'racius'
-            ]
-        );
+        logger.db(`Processing company data for VAT ${data.nif}`);
+        
+        // Prepare data for companies
+        const companyData = {
+            NameCompany: data.companyName,
+            DescriptionCompany: data.companyInfo,
+            Vat: data.nif,
+            Source: 'racius'
+        };
+        
+        // Update companies
+        await updateCompanies(companyData);
 
-        console.log(`Empresa inserida/atualizada: ${data.companyName}`);
-
-        // Atualiza marca
-        await updateBrand({
+        // Prepare data for brands
+        const brandData = {
             NameBrand: data.companyName,
             DescriptionBrand: data.companyInfo,
-            Logo: null,
             Vat: data.nif,
+            Logo: null,
             ScoreBrand: 0,
             NumReviews: 0,
             SentimentBrand: 0,
             Source: 'racius'
-        });
+        };
+        
+        // Update brands
+        await updateBrands(brandData);
 
-        // Atualiza endereço
-        await updateAddress({
+        // Prepare data for addresses
+        const addressData = {
             Vat: data.nif,
             Address: data.address,
             Location: data.location,
@@ -245,251 +212,51 @@ async function insertCompanyData(data) {
             Country: 'Portugal',
             Parish: null,
             Source: 'racius'
-        });
+        };
+        
+        // Update addresses
+        await updateAddresses(addressData);
 
-        // Atualiza CAEs e categories_brands
-        if (data.caes && data.caes.length > 0) {
-            await updateCaesCompanies({
-                Vat: data.nif,
-                Caes: data.caes,
-                Source: 'racius'
-            });
+// Update CAEs if they exist
+if (data.caes && data.caes.length > 0 && data.caes[0] !== 'N/A') {
+    for (const cae of data.caes) {
+        const caeData = {
+            Vat: data.nif,
+            Cae: cae,
+            Source: 'racius'
+        };
+        await updateCaesCompanies(caeData);
 
-            // Atualiza categories_brands com os mesmos CAEs
-            await updateCategoriesBrands({
-                Vat: data.nif,
-                Caes: data.caes,
-                Source: 'racius'
-            });
-        }
+        // Get first 3 digits for category
+        const category = cae.substring(0, 3);
+        
+        // Update categories_brands with first 3 digits of CAE
+        const categoryData = {
+            Vat: data.nif,
+            Categoria: category, // Using only first 3 digits
+            Source: 'racius'
+        };
+        
+        await updateCategoriesBrands(categoryData);
+    }
+}
+
+        logger.success(`Successfully processed all data for company: ${data.companyName}`);
 
     } catch (error) {
-        console.error('Erro ao inserir dados da empresa:', error);
+        logger.error(`Failed to process company data: ${error.message}`);
         throw error;
     }
 }
 
-async function updateBrand(data) {
+async function scrapeData(url) {
     try {
-        const [companyRows] = await pool.execute(
-            'SELECT ID FROM companies WHERE VAT = ?',
-            [data.Vat]
-        );
-
-        if (companyRows.length === 0) {
-            console.log(`Nenhuma empresa encontrada com o VAT: ${data.Vat}`);
-            return;
-        }
-
-        const idCompany = companyRows[0].ID;
-
-        const [existingRows] = await pool.execute(
-            'SELECT Source FROM brands WHERE VAT = ?',
-            [data.Vat]
-        );
-
-        if (existingRows.length > 0) {
-            const existingSource = existingRows[0].Source;
-
-            if (existingSource === 'Racius' && data.Source === 'Einforma') {
-                console.log(`Atualização ignorada: VAT: ${data.Vat}`);
-                return;
-            }
-
-            await pool.execute(
-                `UPDATE brands 
-                 SET Name = ?, Description = ?, Logo = ?, Score = ?, 
-                     NumReviews = ?, Sentiment = ?, Status = 1, 
-                     Source = ?, Updated_at = CURRENT_TIMESTAMP, 
-                     IDCompany = ?, IsPrimary = 1 
-                 WHERE VAT = ?`,
-                [
-                    data.NameBrand,
-                    data.DescriptionBrand,
-                    data.Logo,
-                    data.ScoreBrand,
-                    data.NumReviews,
-                    data.SentimentBrand,
-                    data.Source,
-                    idCompany,
-                    data.Vat
-                ]
-            );
-            console.log(`Marca atualizada. VAT: ${data.Vat}`);
-        } else {
-            await pool.execute(
-                `INSERT INTO brands (Name, Description, Logo, VAT, Score, 
-                                   NumReviews, Sentiment, Status, Source, 
-                                   Created_at, Updated_at, IDCompany, IsPrimary)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 
-                         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, 1)`,
-                [
-                    data.NameBrand,
-                    data.DescriptionBrand,
-                    data.Logo,
-                    data.Vat,
-                    data.ScoreBrand,
-                    data.NumReviews,
-                    data.SentimentBrand,
-                    data.Source,
-                    idCompany
-                ]
-            );
-            console.log(`Marca inserida. VAT: ${data.Vat}`);
-        }
-    } catch (error) {
-        console.error('Erro ao atualizar marca:', error);
-        throw error;
-    }
-}
-
-async function updateAddress(data) {
-    try {
-        const [brandRows] = await pool.execute(
-            `SELECT b.ID 
-             FROM brands b
-             JOIN companies c ON b.IDCompany = c.ID
-             WHERE c.VAT = ?`,
-            [data.Vat]
-        );
-
-        if (brandRows.length === 0) {
-            console.log(`Nenhuma marca encontrada com o VAT: ${data.Vat}`);
-            return;
-        }
-
-        const idBrand = brandRows[0].ID;
-
-        const [existingRows] = await pool.execute(
-            'SELECT Source FROM addresses WHERE IDBrand = ?',
-            [idBrand]
-        );
-
-        if (existingRows.length > 0) {
-            const existingSource = existingRows[0].Source;
-
-            if (existingSource === 'Racius' && data.Source === 'Einforma') {
-                console.log(`Atualização de endereço ignorada: IDBrand: ${idBrand}`);
-                return;
-            }
-
-            await pool.execute(
-                `UPDATE addresses 
-                 SET Address = ?, Location = ?, Zipcode = ?, 
-                     County = ?, District = ?, Country = ?, 
-                     Parish = ?, Status = 1, Updated_at = CURRENT_TIMESTAMP, 
-                     IsPrimary = 1, Source = ? 
-                 WHERE IDBrand = ?`,
-                [
-                    data.Address,
-                    data.Location,
-                    data.Zipcode,
-                    data.County,
-                    data.District,
-                    data.Country,
-                    data.Parish,
-                    data.Source,
-                    idBrand
-                ]
-            );
-            console.log(`Endereço atualizado. IDBrand: ${idBrand}`);
-        } else {
-            await pool.execute(
-                `INSERT INTO addresses (IDBrand, Address, Location, Zipcode, 
-                                      County, District, Country, Parish, 
-                                      Status, Created_at, Updated_at, 
-                                      IsPrimary, Source)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 
-                         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1, ?)`,
-                [
-                    idBrand,
-                    data.Address,
-                    data.Location,
-                    data.Zipcode,
-                    data.County,
-                    data.District,
-                    data.Country,
-                    data.Parish,
-                    data.Source
-                ]
-            );
-            console.log(`Endereço inserido. IDBrand: ${idBrand}`);
-        }
-    } catch (error) {
-        console.error('Erro ao atualizar endereço:', error);
-        throw error;
-    }
-}
-
-async function updateCaesCompanies(data) {
-    try {
-        // Filtrar CAEs vazios ou inválidos
-        const validCaes = data.Caes.filter(cae => /^\d+$/.test(cae));
-
-        if (validCaes.length === 0) {
-            console.log(`Nenhum CAE válido para processar. VAT: ${data.Vat}`);
-            return;
-        }
-
-        const [companyRows] = await pool.execute(
-            'SELECT ID FROM companies WHERE VAT = ?',
-            [data.Vat]
-        );
-
-        if (companyRows.length === 0) {
-            console.log(`Nenhuma empresa encontrada com o VAT: ${data.Vat}`);
-            return;
-        }
-
-        const idCompany = companyRows[0].ID;
-
-        // Verifica e insere CAEs se necessário
-        for (const cae of validCaes) {
-            const [existingCae] = await pool.execute(
-                'SELECT Code FROM caes WHERE Code = ?',
-                [cae]
-            );
-
-            if (existingCae.length === 0) {
-                await pool.execute(
-                    `INSERT INTO caes (Code, Description, Status, Source) 
-                     VALUES (?, ?, 1, ?)`,
-                    [cae, 'Descrição pendente', data.Source]
-                );
-                console.log(`CAE ${cae} inserido na tabela caes`);
-            }
-        }
-
-        // Limpa CAEs existentes da empresa
-        await pool.execute(
-            'DELETE FROM caes_companies WHERE IDCompany = ?',
-            [idCompany]
-        );
-
-        // Insere os novos CAEs
-        for (const cae of validCaes) {
-            await pool.execute(
-                `INSERT INTO caes_companies (CAE, IDCompany, Source) 
-                 VALUES (?, ?, ?)`,
-                [cae, idCompany, data.Source]
-            );
-            console.log(`CAE ${cae} associado à empresa ID: ${idCompany}`);
-        }
-
-        console.log(`CAEs atualizados para empresa ID: ${idCompany}`);
-    } catch (error) {
-        console.error('Erro ao atualizar CAEs:', error);
-        throw error;
-    }
-}
-
-async function scrapeData(slug) {
-    try {
-        const url = `https://www.racius.com/${slug}`;
+        const cleanUrl = url.replace(/^https?:\/\//, '').replace('www.', '');
+        logger.info(`Starting scrape for URL: ${cleanUrl}`);
+        
         const proxyAgent = new SocksProxyAgent(TOR_SOCKS_PROXY);
-
         const config = {
-            url: url,
+            url: `https://www.${cleanUrl}`,
             method: 'get',
             httpsAgent: proxyAgent,
             proxy: false,
@@ -505,17 +272,18 @@ async function scrapeData(slug) {
             maxRedirects: 5,
         };
 
-        console.log(`\nScraping URL: ${url}...`);
+        logger.network('Sending HTTP request...');
         const { data } = await axios(config);
+        logger.success('Received webpage content');
+
         const $ = cheerio.load(data);
+        logger.info('Parsing webpage data...');
 
-        // Extração do nome da empresa
         const companyName = $('.company__name').text().trim() || 'N/A';
-
-        // Extração do NIF
         const nif = $('.company-info__data').text().trim() || 'N/A';
 
-        // Extração da morada completa e localização
+        logger.progress(`Found company: ${companyName} (NIF: ${nif})`);
+
         let locationInfo = {
             address: 'N/A',
             zipcode: 'N/A',
@@ -527,35 +295,29 @@ async function scrapeData(slug) {
         $('.detail__detail').each((_, element) => {
             const keyInfo = $(element).find('.detail__key-info').first().text().trim();
             if (keyInfo === 'Morada') {
-                // Pega a morada completa do elemento t--d-blue
                 const fullAddress = $(element).find('.px-md--2 .t--d-blue').first().text().trim();
                 
                 if (fullAddress) {
-                    // Extrai o código postal e a localidade
                     const postalMatch = fullAddress.match(/(\d{4}-\d{3})\s*([^,]+)$/);
                     if (postalMatch) {
                         locationInfo.zipcode = postalMatch[1];
                         locationInfo.location = postalMatch[2].trim();
                     }
 
-                    // Extrai o endereço (tudo antes do código postal)
                     const addressParts = fullAddress.split(/\d{4}-\d{3}/);
                     if (addressParts.length > 0) {
                         locationInfo.address = addressParts[0].trim() || 'N/A';
                     }
                 }
 
-                // Pega o distrito e concelho
                 locationInfo.county = $(element).find('.t-md--right .detail__key-info').text().trim() || 'N/A';
                 locationInfo.district = $(element).find('.t-md--right .t--d-blue').text().trim() || 'N/A';
             }
         });
 
-        // Descrição da empresa
         const companyInfo = $('#about').text().trim() || 'N/A';
-
-        // Extração dos CAEs
         const caes = [];
+        
         $('.detail__line').each((_, element) => {
             const caeElement = $(element).find('.t--orange').first();
             if (caeElement.length) {
@@ -566,57 +328,57 @@ async function scrapeData(slug) {
             }
         });
 
-        // Se não encontrou nenhum CAE, adiciona N/A ao array
         if (caes.length === 0) {
             caes.push('N/A');
         }
 
         const companyData = {
-            companyName: companyName,
-            nif: nif,
-            companyInfo: companyInfo,
+            companyName,
+            nif,
+            companyInfo,
             address: locationInfo.address,
             location: locationInfo.location,
             zipcode: locationInfo.zipcode,
             county: locationInfo.county,
             district: locationInfo.district,
-            caes: caes
+            caes
         };
 
-        console.log('Dados extraídos:', {
-            empresa: companyData.companyName,
-            nif: companyData.nif,
-            morada: companyData.address,
-            codigoPostal: companyData.zipcode,
-            localidade: companyData.location,
-            concelho: companyData.county,
-            distrito: companyData.district
-        });
+        logger.info('Data extraction summary:');
+        logger.info(`Company: ${companyData.companyName}`);
+        logger.info(`NIF: ${companyData.nif}`);
+        logger.info(`Address: ${companyData.address}`);
+        logger.info(`Location: ${companyData.location}`);
+        logger.info(`District: ${companyData.district}`);
+        logger.info(`CAEs found: ${companyData.caes.length}`);
 
         if (companyData.companyName !== 'N/A' && companyData.nif !== 'N/A') {
+            logger.progress('Starting database insertion/update...');
             await insertCompanyData(companyData);
+            logger.success(`Successfully processed company: ${companyData.companyName}`);
         } else {
-            console.log('Dados insuficientes para inserção:', {
-                nome: companyData.companyName !== 'N/A' ? 'OK' : 'Faltando',
-                nif: companyData.nif !== 'N/A' ? 'OK' : 'Faltando'
-            });
+            logger.warn('Insufficient data for database operation');
+            logger.info('Missing fields:');
+            logger.info(`- Name: ${companyData.companyName === 'N/A' ? 'Missing' : 'OK'}`);
+            logger.info(`- NIF: ${companyData.nif === 'N/A' ? 'Missing' : 'OK'}`);
         }
 
         requestCount++;
 
         if (requestCount % 20 === 0) {
-            console.log('\nRenovando circuito Tor após 20 requisições...');
+            logger.network('\nInitiating scheduled Tor circuit renewal after 20 requests...');
             await safeRenewTorCircuit();
             const newIP = await getCurrentIP();
-            console.log(`Novo IP: ${newIP}`);
+            logger.success(`New IP obtained: ${newIP}`);
         }
     } catch (error) {
-        console.error(`Erro no scraping: ${error.message}`);
+        logger.error(`Scraping error: ${error.message}`);
         if (error.response?.status === 403 || error.response?.status === 429) {
-            console.log('Possível bloqueio detectado. Renovando circuito Tor...');
+            logger.warn('Possible rate limiting detected. Renewing Tor circuit...');
             await safeRenewTorCircuit();
             const newIP = await getCurrentIP();
-            console.log(`Novo IP: ${newIP}`);
+            logger.success(`New IP obtained: ${newIP}`);
+            logger.info('Waiting 5 seconds before continuing...');
             await new Promise(resolve => setTimeout(resolve, 5000));
         }
     }
@@ -624,35 +386,49 @@ async function scrapeData(slug) {
 
 async function Racius() {
     try {
-        // Buscar todos os NIFs da tabela RaciusLinksNifs
-        const [rows] = await pool.execute('SELECT NIF FROM RaciusLinks WHERE nif IS NOT NULL');
-        const nifs = rows.map(row => row.nif);
+        logger.info('Starting Racius scraping process...');
+        logger.db('Fetching URLs from database...');
+        
+        const [rows] = await pool.execute('SELECT NIF, URL FROM projint2.raciuslinks WHERE URL IS NOT NULL');
 
-        console.log(`Total de NIFs para processar: ${nifs.length}`);
+        logger.success(`Found ${rows.length} companies to process`);
+        
         const initialIP = await getCurrentIP();
-        console.log(`IP inicial: ${initialIP}\n`);
+        logger.network(`Starting with IP: ${initialIP}\n`);
 
-        for (const nif of nifs) {
-            if (nif) {
-                await scrapeData(nif); // Processa o NIF (substituindo scrapeData para o contexto do NIF)
-                await new Promise(resolve => setTimeout(resolve, 2000)); // Aguarda 2 segundos entre cada requisição
+        for (let i = 0; i < rows.length; i++) {
+            const { NIF, URL } = rows[i];
+            if (NIF && URL) {
+                logger.progress(`Processing company ${i + 1}/${rows.length} (NIF: ${NIF})`);
+                await scrapeData(URL);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            } else {
+                logger.warn(`Skipping invalid entry at index ${i}: Missing NIF or URL`);
             }
         }
 
-        console.log('\nProcessamento concluído!');
-        console.log(`Total de requisições feitas: ${requestCount}`);
-        console.log(`Total de renovações do circuito Tor: ${newnymRequestCount}`);
+        logger.success('\nProcessing completed successfully!');
+        logger.info('Final statistics:');
+        logger.info(`Total requests made: ${requestCount}`);
+        logger.info(`Total Tor circuit renewals: ${newnymRequestCount}`);
     } catch (error) {
-        console.error('Erro ao processar os NIFs:', error);
+        logger.error(`Fatal error processing companies: ${error.message}`);
     } finally {
-        await pool.end(); // Finaliza a conexão com o banco de dados
+        logger.db('Closing database connection...');
+        await pool.end();
+        logger.success('Database connection closed');
     }
 }
 
+// Start the scraping process
+logger.info('Initializing Racius scraper...');
+Racius().then(() => {
+    logger.success('Scraping process completed successfully');
+}).catch(error => {
+    logger.error('Fatal error in main process:', error);
+});
 
-Racius()
-
-// Exportação
+// Exports
 module.exports = {
     Racius
 };

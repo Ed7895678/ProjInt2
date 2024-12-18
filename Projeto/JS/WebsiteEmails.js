@@ -1,8 +1,8 @@
-// Guilherme Dias
 const puppeteer = require('puppeteer');
 const fs = require('fs').promises;
 const path = require('path');
 const mysql = require('mysql2');
+const { updateContacts } = require('./UpdateDatabase');
 
 // Create the connection pool with promise wrapper
 const pool = mysql.createPool({
@@ -18,7 +18,7 @@ const pool = mysql.createPool({
 // Common pages where emails are typically found
 const commonPages = [
     // Privacy and Terms
-    'privacidade', 'privacy', 'privacypolicy', 'política-de-privacidade', 'politica-privacidade',
+    'privacidade', 'privacy', 'privacypolicy', 'polÃ­tica-de-privacidade', 'politica-privacidade',
     'termos', 'terms', 'termsofservice', 'termos-e-condicoes', 'termos-condicoes',
     'cookies', 'cookie-policy', 'politica-cookies',
     'aviso-legal', 'legal',
@@ -145,12 +145,15 @@ function isValidEmail(email, url) {
         return false;
     }
 
+    // Remove any whitespace
     if (/[\s\n\r\t]/.test(email)) {
         return false;
     }
 
     const [localPart, domainPart] = email.split('@');
-    if (!localPart || !domainPart || (domainPart.match(/\./g) || []).length !== 1) {
+    
+    // Basic validations
+    if (!localPart || !domainPart) {
         return false;
     }
 
@@ -158,11 +161,26 @@ function isValidEmail(email, url) {
         return false;
     }
 
+    // Strict TLD validation - must end exactly with one of these
+    const validTLDs = ['.net', '.pt', '.org', '.com'];
+    const hasValidTLD = validTLDs.some(tld => {
+        const domainEndIndex = domainPart.toLowerCase().lastIndexOf(tld);
+        if (domainEndIndex === -1) return false;
+        // Check if this is the actual end of the string
+        return domainEndIndex + tld.length === domainPart.length;
+    });
+
+    if (!hasValidTLD) {
+        return false;
+    }
+
+    // PNG check
     if (email.toLowerCase().endsWith('.png')) {
         return false;
     }
 
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    // Strict regex that only allows the specific TLDs
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9][a-zA-Z0-9.-]*\.(net|pt|org|com)$/i;
     if (!emailRegex.test(email)) {
         return false;
     }
@@ -300,87 +318,15 @@ async function autoScroll(page) {
     });
 }
 
-async function updateContacts(data, idBrand) {
-    try {
-        const updateContact = `UPDATE contacts SET Type = ?, Status = 1, Updated_at = CURRENT_TIMESTAMP, IsPrimary = 1, Source = ? WHERE IDBrand = ? AND Contact = ?`;
-        const [result] = await pool.execute(updateContact, [
-            data.TypeContact,
-            data.Source,
-            idBrand,
-            data.Contact
-        ]);
-        
-        if (result.affectedRows === 0) {
-            const insertContact = `INSERT INTO contacts (Contact, Type, Status, Created_at, Updated_at, IsPrimary, IDBrand, Source) 
-                                 VALUES (?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1, ?, ?)`;
-            await pool.execute(insertContact, [
-                data.Contact,
-                data.TypeContact,
-                idBrand,
-                data.Source
-            ]);
-            console.log(`Contact inserted for Brand ID: ${idBrand}`);
-            return;
-        }
-        console.log(`Contact updated for Brand ID: ${idBrand}`);
-    } catch (error) {
-        console.error(`Error updating/inserting contact for Brand ID ${idBrand}:`, error);
-    }
-}
-
 async function saveEmailsToDatabase(url, emails, brandId) {
     try {
-        // First, get existing contacts for this brand to avoid duplicates
-        const [existingContacts] = await pool.query(
-            'SELECT Contact FROM contacts WHERE IDBrand = ? AND Type = "email"',
-            [brandId]
-        );
-        const existingEmails = new Set(existingContacts.map(row => row.Contact.toLowerCase()));
-
         for (const email of emails) {
-            if (!existingEmails.has(email.toLowerCase())) {
-                // Insert new contact with all required fields
-                const insertContact = `
-                    INSERT INTO contacts (
-                        Contact,
-                        IDBrand,
-                        Type,
-                        Status,
-                        Created_at,
-                        Updated_at,
-                        IsPrimary,
-                        Source
-                    ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?)`;
-
-                await pool.execute(insertContact, [
-                    email,           // Contact
-                    brandId,         // IDBrand
-                    'email',         // Type
-                    1,              // Status (1 for active)
-                    1,              // IsPrimary (1 for primary contact)
-                    url             // Source
-                ]);
-
-                console.log(`New email contact inserted: ${email} for Brand ID: ${brandId}`);
-            } else {
-                // Update existing contact
-                const updateContact = `
-                    UPDATE contacts 
-                    SET 
-                        Status = 1,
-                        Updated_at = CURRENT_TIMESTAMP,
-                        IsPrimary = 1,
-                        Source = ?
-                    WHERE IDBrand = ? AND Contact = ? AND Type = "email"`;
-
-                await pool.execute(updateContact, [
-                    url,            // Source
-                    brandId,        // IDBrand
-                    email          // Contact
-                ]);
-
-                console.log(`Existing email contact updated: ${email} for Brand ID: ${brandId}`);
-            }
+            const contactData = {
+                Contact: email,
+                TypeContact: 'email',
+                Source: "Website"
+            };
+            await updateContacts(contactData, brandId);
         }
 
         console.log(`Processed ${emails.length} emails for URL: ${url}`);
@@ -499,7 +445,7 @@ async function extractEmails(urls) {
     }
 }
 
-async function main() {
+async function Emails() {
     try {
         console.log('Starting email extraction process...');
         
@@ -524,5 +470,9 @@ async function main() {
     }
 }
 
-// Start the script
-main();
+Emails()
+
+// Exportação
+module.exports = {
+    Emails
+};
