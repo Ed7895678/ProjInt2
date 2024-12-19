@@ -18,11 +18,6 @@ const { Racius } = require('./JS/Racius');
 const { Numeros } = require('./JS/WebsiteTel');
 const { Emails } = require('./JS/WebsiteEmails');
 
-resetStatus()
-atualizarEmails();
-atualizarNumeros();
-resetStatus()
-
 // Função para atualizar os links e nif's do Racius
 async function atualizarLinksRacius() {
     try {
